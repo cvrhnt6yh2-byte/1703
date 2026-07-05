@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>1703 — программа тренировок</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prata&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E9E5DE;          /* бумага */
+  --card:#DFDAD2;        /* серая карточка */
+  --card-2:#F4F1EC;      /* светлая карточка */
+  --ink:#1B1915;         /* чернила */
+  --muted:#8B857B;       /* вторичный текст */
+  --line:#CFC9BF;        /* тонкие линии */
+  --ok:#5F6B4F;          /* оливковый акцент (выполнено) */
+  --r-lg:28px; --r-md:20px; --r-sm:14px;
+  --serif:'Prata',Georgia,serif;
+  --sans:'Manrope',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{height:100%}
+body{
+  min-height:100%;
+  background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.45;
+  padding:14px 16px 160px;
+  padding-top:max(14px,env(safe-area-inset-top));
+  padding-bottom:calc(160px + env(safe-area-inset-bottom));
+  max-width:520px;margin:0 auto;
+}
+h1{font-family:var(--serif);font-weight:400;font-size:34px;line-height:1.1;letter-spacing:-.01em;margin:6px 2px 4px}
+.head-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.switch{display:flex;background:var(--card);border-radius:999px;padding:3px;margin-top:10px;flex-shrink:0}
+.switch button{border:none;background:none;padding:8px 14px;border-radius:999px;font-family:var(--sans);font-weight:700;font-size:12px;letter-spacing:.03em;color:var(--muted);cursor:pointer}
+.switch button.on{background:var(--ink);color:var(--bg)}
+.sub{color:var(--muted);font-size:14px;margin:0 2px 18px}
+.screen{display:none}
+.screen.active{display:block;animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* карточки */
+.card{background:var(--card);border-radius:var(--r-lg);padding:20px;margin-bottom:14px}
+.card.light{background:var(--card-2)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.label{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:lowercase;color:var(--muted);margin-bottom:8px}
+.big{font-family:var(--serif);font-size:44px;line-height:1;letter-spacing:-.02em}
+.big small{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--muted);margin-left:4px;letter-spacing:0}
+.hint{font-size:13px;color:var(--muted);margin-top:8px}
+.divider{height:1px;background:var(--line);margin:14px 0}
+
+/* календарь */
+.cal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.cal-head b{font-weight:700;font-size:15px;text-transform:capitalize}
+.cal-nav{display:flex;gap:6px}
+.cal-nav button{width:34px;height:34px;border:none;border-radius:50%;background:var(--card-2);color:var(--ink);font-size:16px;cursor:pointer}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
+.cal-grid .dow{font-size:11px;color:var(--muted);font-weight:600;padding:4px 0}
+.cal-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:13px;border-radius:50%;position:relative;color:var(--ink)}
+.cal-cell.dim{color:var(--line)}
+.cal-cell.today{outline:1.5px solid var(--ink)}
+.cal-cell.done{background:var(--ink);color:var(--bg);font-weight:600}
+.cal-cell .w{position:absolute;bottom:1px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--ok)}
+
+/* следующая тренировка */
+.next-card{background:var(--ink);color:var(--bg);border-radius:var(--r-lg);padding:22px;margin-bottom:14px}
+.next-card .label{color:#9a958b}
+.next-card .big{font-size:26px;font-family:var(--serif)}
+.next-card .meta{font-size:13px;color:#9a958b;margin-top:6px}
+.next-card button{margin-top:16px;width:100%;padding:14px;border:none;border-radius:999px;background:var(--bg);color:var(--ink);font-family:var(--sans);font-weight:700;font-size:15px;cursor:pointer}
+
+/* формы */
+input[type=number],input[type=date],select{
+  width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--card-2);color:var(--ink);font-family:var(--sans);font-size:16px;outline:none;
+}
+input:focus,select:focus{border-color:var(--ink)}
+.btn{display:block;width:100%;padding:15px;border:none;border-radius:999px;background:var(--ink);color:var(--bg);font-family:var(--sans);font-weight:700;font-size:15px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--ink)}
+.btn:disabled{opacity:.4}
+.inline{display:flex;gap:10px;align-items:center}
+.inline .btn{width:auto;padding:15px 22px;flex-shrink:0}
+
+/* вес: график */
+.chart{width:100%;height:150px;margin-top:6px}
+.log-item{display:flex;justify-content:space-between;align-items:baseline;padding:12px 2px;border-bottom:1px solid var(--line)}
+.log-item:last-child{border-bottom:none}
+.log-item b{font-family:var(--serif);font-weight:400;font-size:20px}
+.log-item span{font-size:13px;color:var(--muted)}
+.log-item .del{border:none;background:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0 4px}
+
+/* тренировка */
+.ex{background:var(--card-2);border-radius:var(--r-md);padding:16px;margin-bottom:10px}
+.ex-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.ex-name{font-weight:700;font-size:15px}
+.ex-scheme{font-family:var(--serif);font-size:17px;white-space:nowrap}
+.ex-note{font-size:13px;color:var(--muted);margin-top:4px}
+.ex-controls{display:flex;gap:8px;margin-top:12px;align-items:center}
+.ex-controls input{max-width:110px;padding:10px 12px}
+.sets{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.set-dot{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:none;color:var(--muted);font-weight:600;font-size:14px;cursor:pointer;font-family:var(--sans)}
+.set-dot.on{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.bench-part{padding:10px 0;border-bottom:1px dashed var(--line)}
+.bench-part:last-child{border-bottom:none}
+.bench-part .kg{font-family:var(--serif);font-size:19px}
+.bench-part .pct{font-size:13px;color:var(--muted)}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;padding:4px 10px;border-radius:999px;background:var(--card);color:var(--ink);margin-right:6px}
+.tag.dark{background:var(--ink);color:var(--bg)}
+
+/* программа */
+.seg{display:flex;background:var(--card);border-radius:999px;padding:4px;margin-bottom:14px}
+.seg button{flex:1;border:none;background:none;padding:10px 6px;border-radius:999px;font-family:var(--sans);font-weight:600;font-size:13px;color:var(--muted);cursor:pointer}
+.seg button.on{background:var(--ink);color:var(--bg)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted);text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+td{padding:9px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+td.serif{font-family:var(--serif);font-size:15px;white-space:nowrap}
+tr.now td{background:var(--card-2)}
+
+/* нижнее меню */
+nav{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom));
+  width:min(488px,calc(100% - 32px));
+  background:var(--card);border-radius:999px;padding:8px;
+  display:flex;gap:6px;box-shadow:0 10px 30px rgba(27,25,21,.12);z-index:50;
+}
+nav button{
+  flex:1;border:none;background:none;border-radius:999px;padding:12px 4px;
+  display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+  color:var(--muted);font-family:var(--sans);font-size:10px;font-weight:700;letter-spacing:.04em;
+}
+nav button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav button.on{background:var(--ink);color:var(--bg)}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:100px;background:var(--ink);color:var(--bg);
+  padding:12px 20px;border-radius:999px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:.25s;z-index:60}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ГЛАВНАЯ -->
+<section class="screen active" id="scr-home">
+  <div class="head-row">
+    <div>
+      <h1>1703</h1>
+      <p class="sub" id="home-date"></p>
+    </div>
+    <div class="switch" id="prog-switch">
+      <button id="sw-tengo" class="on" onclick="setProgram('tengo')">Tengo</button>
+      <button id="sw-aomame" onclick="setProgram('aomame')">Aomame</button>
+    </div>
+  </div>
+
+  <div class="row2">
+    <div class="card">
+      <div class="label">собственный вес</div>
+      <div class="big" id="home-weight">—<small>кг</small></div>
+      <div class="hint" id="home-weight-hint">нет записей</div>
+    </div>
+    <div class="card light">
+      <div class="label">объём за 7 дней</div>
+      <div class="big" id="home-volume">0<small>кг</small></div>
+      <div class="hint" id="home-volume-hint">поднято суммарно</div>
+    </div>
+  </div>
+
+  <div class="next-card">
+    <div class="label">следующая тренировка</div>
+    <div class="big" id="next-title">—</div>
+    <div class="meta" id="next-meta"></div>
+    <button onclick="go('workout')">Открыть тренировку</button>
+  </div>
+
+  <div class="card light">
+    <div class="cal-head">
+      <b id="cal-title"></b>
+      <div class="cal-nav">
+        <button onclick="calShift(-1)">‹</button>
+        <button onclick="calShift(1)">›</button>
+      </div>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <div class="hint">заполненный день — выполненная тренировка, точка — запись веса</div>
+  </div>
+</section>
+
+<!-- ВЕС -->
+<section class="screen" id="scr-weight">
+  <h1>Вес</h1>
+  <p class="sub">взвешивайся в дни тренировок и фиксируй здесь</p>
+
+  <div class="card light">
+    <div class="label">новая запись</div>
+    <div class="inline">
+      <input type="number" id="w-input" inputmode="decimal" step="0.1" min="30" max="250" placeholder="кг, напр. 84.5">
+      <button class="btn" onclick="addWeight()">Записать</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">динамика</div>
+    <svg class="chart" id="w-chart" viewBox="0 0 320 150" preserveAspectRatio="none"></svg>
+    <div class="hint" id="w-range"></div>
+  </div>
+
+  <div class="card light">
+    <div class="label">последние записи</div>
+    <div id="w-log"></div>
+  </div>
+</section>
+
+<!-- ТЕКУЩАЯ ТРЕНИРОВКА -->
+<section class="screen" id="scr-workout">
+  <h1 id="wo-title">Тренировка</h1>
+  <p class="sub" id="wo-sub"></p>
+  <div class="cal-head" style="background:var(--card);border-radius:999px;padding:6px 8px;margin-bottom:14px">
+    <div class="cal-nav"><button onclick="woShift(-1)">‹</button></div>
+    <b id="wo-pos" style="font-size:13px;font-weight:700"></b>
+    <div class="cal-nav"><button onclick="woShift(1)">›</button></div>
+  </div>
+  <div class="hint" id="wo-offplan" style="display:none;margin:-6px 2px 14px">Это не твоя текущая позиция. После завершения цикл продолжится отсюда.</div>
+  <div id="wo-body"></div>
+</section>
+
+<!-- ПРОГРАММА -->
+<section class="screen" id="scr-program">
+  <h1>Программа</h1>
+  <p class="sub">все микроциклы, рабочие веса и таблица жима</p>
+
+  <div class="seg" id="prog-seg">
+    <button class="on" onclick="progTab('pump',this)">Памповый</button>
+    <button onclick="progTab('volume',this)">Объёмный</button>
+    <button onclick="progTab('power',this)">Силовой</button>
+    <button onclick="progTab('bench',this)">Жим</button>
+  </div>
+  <div id="prog-body"></div>
+
+  <div class="card light" style="margin-top:20px" id="tengo-pos">
+    <div class="label">позиция в цикле</div>
+    <div class="inline" style="margin-bottom:10px">
+      <select id="set-week"></select>
+      <select id="set-workout">
+        <option value="1">Тренировка 1</option>
+        <option value="2">Тренировка 2</option>
+        <option value="3">Тренировка 3</option>
+      </select>
+    </div>
+    <button class="btn ghost" onclick="savePosition()">Сохранить позицию</button>
+    <div class="hint">если пропустил или начинаешь не с начала — выставь неделю и тренировку вручную</div>
+  </div>
+</section>
+
+<nav>
+  <button class="on" id="nav-home" onclick="go('home')">
+    <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/></svg>
+    главная
+  </button>
+  <button id="nav-weight" onclick="go('weight')">
+    <svg viewBox="0 0 24 24"><path d="M4 20 20 4"/><circle cx="7" cy="17" r="3"/><circle cx="17" cy="7" r="3"/></svg>
+    вес
+  </button>
+  <button id="nav-workout" onclick="go('workout')">
+    <svg viewBox="0 0 24 24"><path d="M2 12h3M19 12h3M7 8v8M17 8v8M7 12h10"/></svg>
+    тренировка
+  </button>
+  <button id="nav-program" onclick="go('program')">
+    <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+    программа
+  </button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ TELEGRAM ============ */
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); try{ tg.setHeaderColor('#E9E5DE'); tg.setBackgroundColor('#E9E5DE'); }catch(e){} }
+
+/* ============ ДАННЫЕ ПРОГРАММЫ ============ */
+const BENCH = 'bench';           // маркер «работаем по программе весов»
+const FAIL  = 'отказ';
+
+const CYCLES = {
+  pump: { name:'Памповый', weeks:[1,4,7], workouts:[
+    [ {n:'Жим штанги лёжа', r:BENCH},
+      {n:'Лицевая тяга', r:30},
+      {n:'Жим гантелей на накл. скамье', r:25},
+      {n:'Обратная бабочка', r:30},
+      {n:'Приседания (Гакк/Смит/Тренажёр)', r:20},
+      {n:'Подъём ног в петлях, до турника', r:FAIL} ],
+    [ {n:'Тяга верхнего блока, широкий', r:25},
+      {n:'Жим Арнольда', r:25},
+      {n:'Тяга штанги в наклоне', r:25},
+      {n:'Дзюба (средняя дельта)', r:30},
+      {n:'Тяга гантели в наклоне', r:25},
+      {n:'Гиперэкстензия, с доп. весом', r:25} ],
+    [ {n:'Жим штанги лёжа', r:BENCH},
+      {n:'Бицепс (любое упражнение)', r:25},
+      {n:'Трицепс (любое упражнение)', r:25},
+      {n:'Сведения в блоке на накл. скамье', r:25},
+      {n:'Приседания (Гакк/Смит/Тренажёр)', r:20},
+      {n:'Молитва на блоке', r:FAIL} ]
+  ]},
+  volume: { name:'Объёмный', weeks:[2,5,8], workouts:[
+    [ {n:'Жим штанги лёжа', r:BENCH},
+      {n:'Лицевая тяга', r:15},
+      {n:'Жим гантелей на накл. скамье', r:[12,20,20]},
+      {n:'Обратная бабочка', r:15},
+      {n:'Приседания (Гакк/Смит/Тренажёр)', r:10},
+      {n:'Подъём ног в петлях, до турника', r:FAIL} ],
+    [ {n:'Подтягивания, широкий хват', r:FAIL},
+      {n:'Жим Арнольда', r:15},
+      {n:'Тяга штанги в наклоне', r:12},
+      {n:'Отведение с нижним блоком (ср. дельта)', r:15},
+      {n:'Тяга гантели в наклоне', r:12},
+      {n:'Гиперэкстензия, с доп. весом', r:12} ],
+    [ {n:'Жим штанги лёжа', r:BENCH},
+      {n:'Бицепс (любое упражнение)', r:12},
+      {n:'Трицепс (любое упражнение)', r:12},
+      {n:'Сведения в блоке на накл. скамье', r:12},
+      {n:'Приседания (Гакк/Смит/Тренажёр)', r:10},
+      {n:'Молитва на блоке', r:FAIL} ]
+  ]},
+  power: { name:'Силовой', weeks:[3,6,9], workouts:[
+    [ {n:'Жим штанги лёжа', r:BENCH},
+      {n:'Лицевая тяга', r:8},
+      {n:'Жим гантелей на накл. скамье', r:8},
+      {n:'Обратная бабочка', r:8},
+      {n:'Приседания (Гакк/Смит/Тренажёр)', r:5},
+      {n:'Подъём ног в петлях, до турника', r:FAIL} ],
+    [ {n:'Подтягивания, узкий хват, с доп. весом', r:6},
+      {n:'Жим Арнольда', r:8},
+      {n:'Тяга нижнего блока, узкий', r:6},
+      {n:'Отведения с гантелями стоя (ср. дельта)', r:8},
+      {n:'Тяга гантели в наклоне', r:6},
+      {n:'Гиперэкстензия, с доп. весом', r:6} ],
+    [ {n:'Жим штанги лёжа', r:BENCH},
+      {n:'Бицепс (любое упражнение)', r:8},
+      {n:'Трицепс (любое упражнение)', r:8},
+      {n:'Сведения в блоке на накл. скамье', r:8},
+      {n:'Приседания (Гакк/Смит/Тренажёр)', r:5},
+      {n:'Молитва на блоке', r:FAIL} ]
+  ]}
+};
+
+/* Жим лёжа: 19 сессий (недели 1–9 по 2 жимовых дня + неделя 10 — проходка).
+   p — процент от 1ПМ, r — повторы, s — подходы, note — стиль. hold=true не идёт в тоннаж. */
+const BENCH_PROGRAM = [
+  [{p:75,r:5,s:3},{p:70,r:3,s:3,note:'Жим 1-2-3'}],
+  [{p:72.5,r:3,s:3},{p:80,r:2,s:3}],
+  [{p:70,r:3,s:2},{p:82.5,r:3,s:3},{p:87.5,r:1,s:2,note:'с паузой'},{p:120,r:1,s:2,note:'Удержание',hold:true}],
+  [{p:60,r:5,s:8,note:'Скоростной жим'}],
+  [{p:70,r:3,s:2},{p:77.5,r:3,s:2},{p:82.5,r:2,s:3}],
+  [{p:77.5,r:5,s:3},{p:72.5,r:2,s:3,note:'Жим 1-2-3'}],
+  [{p:70,r:3,s:2},{p:75,r:3,s:2},{p:80,r:3,s:3}],
+  [{p:75,r:3,s:2},{p:77.5,r:3,s:2},{p:82.5,r:3,s:3}],
+  [{p:80,r:3,s:1},{p:85,r:2,s:2},{p:90,r:1,s:2,note:'с паузой'},{p:130,r:1,s:2,note:'Удержание',hold:true}],
+  [{p:65,r:5,s:8,note:'Скоростной жим'}],
+  [{p:82.5,r:3,s:3},{p:75,r:3,s:3,note:'Жим 1-2-3'}],
+  [{p:70,r:3,s:2},{p:77.5,r:3,s:3},{p:82.5,r:3,s:3}],
+  [{p:72.5,r:4,s:2},{p:77.5,r:3,s:2},{p:85,r:2,s:3}],
+  [{p:75,r:3,s:2},{p:80,r:2,s:1},{p:85,r:2,s:1},{p:92.5,r:1,s:2,note:'с паузой'},{p:130,r:1,s:2,note:'Удержание',hold:true}],
+  [{p:70,r:5,s:8,note:'Скоростной жим'}],
+  [{p:85,r:3,s:3},{p:80,r:3,s:3,note:'Жим 1-2-3'}],
+  [{p:70,r:3,s:2},{p:75,r:3,s:3},{p:80,r:2,s:3}],
+  [{p:70,r:3,s:2},{p:77.5,r:3,s:4}],
+  [{note:'Проходка на максимум',max:true}]
+];
+const PCT_LIST = [70,72.5,75,77.5,80,82.5,85,87.5,90,92.5,95,97.5,100,120,130,140];
+
+/* ============ ПРОГРАММА AOMAME (круговая, 3 тренировки, ротация) ============
+   disp — как показываем повторы, reps — число для тоннажа, def — вес-подсказка (кг). */
+const AOMAME = [
+  { blocks:[
+      { title:'Круг 1', rounds:4, rest:'без отдыха внутри круга · 90–120 сек между кругами', note:'после — растяжка ягодичных, по 1 мин',
+        ex:[ {n:'Отведения с нижним блоком на скамье', disp:'20', reps:20, def:12.5},
+             {n:'Разведения в тренажёре сидя', disp:'30', reps:30, def:32.5},
+             {n:'Ягодичный мост в Смите', disp:'20', reps:20, def:30} ]},
+      { title:'Круг 2', rounds:4, rest:'без отдыха внутри круга · 90–120 сек между кругами', note:'после — растяжка мышц спины, по 30 сек',
+        ex:[ {n:'Тяга верхнего блока, обратным хватом', disp:'15', reps:15, def:20},
+             {n:'Пулловер с верхним блоком, верёвкой', disp:'15', reps:15, def:15},
+             {n:'Разгибания рук узким хватом на верхнем блоке', disp:'15', reps:15, def:15} ]},
+      { title:'Упражнение 3', rounds:4, rest:'отдых между подходами 60–90 сек',
+        ex:[ {n:'Медленные опускания с тумбы, на одну ногу (5 сек вниз)', disp:'6 на ногу', reps:12, def:0} ]}
+    ],
+    cooldown:[ 'Скручивания на фитболе — 20–30 раз (до сильного жжения), 3 подхода',
+               'Классическая планка на локтях — 90 сек, 1 подход',
+               'Планка на гиперэкстензии — 90 сек, 1 подход' ]},
+  { blocks:[
+      { title:'Круг 1', rounds:4, rest:'без отдыха внутри круга · 90–120 сек между кругами', note:'после — растяжка ягодичных, по 1 мин',
+        ex:[ {n:'Разведения в тренажёре сидя', disp:'30', reps:30, def:32.5},
+             {n:'Болгарские выпады (сплит-приседания)', disp:'по 10', reps:20, def:0},
+             {n:'Сгибания ног в тренажёре (лёжа/сидя/стоя)', disp:'15', reps:15, def:15} ]},
+      { title:'Круг 2', rounds:4, rest:'без отдыха внутри круга · 90–120 сек между кругами', note:'после — растяжка мышц спины, по 30 сек',
+        ex:[ {n:'Тяга нижнего блока сидя, узким хватом', disp:'15', reps:15, def:20},
+             {n:'Пулловер с гантелей лёжа', disp:'15', reps:15, def:10},
+             {n:'Жим гантелей на накл. скамье, поочерёдно', disp:'20 в сумме', reps:20, def:7} ]},
+      { title:'Упражнение 3', rounds:4, rest:'отдых между подходами 60–90 сек',
+        ex:[ {n:'Жим ногами, широкая постановка ног', disp:'20', reps:20, def:30} ]}
+    ],
+    cooldown:[ 'Подъём ног в петлях (или с упором локтями) — 15 подъёмов, 3 подхода',
+               'Классическая планка на прямых руках — 90 сек, 1 подход',
+               'Планка на гиперэкстензии — 90 сек, 1 подход' ]},
+  { blocks:[
+      { title:'Круг 1', rounds:4, rest:'без отдыха внутри круга · 90–120 сек между кругами', note:'после — растяжка ягодичных, по 1 мин',
+        ex:[ {n:'Сведения в тренажёре', disp:'20', reps:20, def:20},
+             {n:'Разведения в тренажёре сидя', disp:'30', reps:30, def:32.5},
+             {n:'Ягодичный мост в Смите', disp:'20', reps:20, def:30} ]},
+      { title:'Круг 2', rounds:4, rest:'без отдыха внутри круга · 90–120 сек между кругами', note:'после — растяжка мышц спины, по 30 сек',
+        ex:[ {n:'Тяга верхнего блока, узким хватом', disp:'15', reps:15, def:20},
+             {n:'Жим Арнольда сидя', disp:'12', reps:12, def:5.5},
+             {n:'Отведения с гантелями в стороны стоя', disp:'30', reps:30, def:2.5} ]},
+      { title:'Упражнение 3', rounds:4, rest:'отдых между подходами 60–90 сек',
+        ex:[ {n:'Выпады с нижним блоком', disp:'по 10', reps:20, def:17.5} ]}
+    ],
+    cooldown:[ 'Обратные скручивания — 15 подъёмов, 3 подхода',
+               'Классическая планка на локтях — 60 сек, 1 подход',
+               'Планка на гиперэкстензии — 90 сек, 1 подход' ]}
+];
+
+/* ============ ХРАНИЛИЩЕ ============ */
+const UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || 'local';
+const SKEY = 'tp1703_' + UID;
+const store = {
+  data: { weights:[], history:[], workWeights:{}, week:1, workout:1, benchRM:100, program:'tengo', aWorkout:1, aWeights:{} },
+  load(){
+    const local = localStorage.getItem(SKEY) || (UID==='local' ? localStorage.getItem('tp1703') : null);
+    if (local) { try{ Object.assign(this.data, JSON.parse(local)); }catch(e){} }
+    return new Promise(res=>{
+      if (tg && tg.CloudStorage && tg.CloudStorage.getItem) {
+        tg.CloudStorage.getItem('tp1703', (err,val)=>{
+          if (!err && val) { try{ Object.assign(this.data, JSON.parse(val)); }catch(e){} }
+          res();
+        });
+        setTimeout(res, 1200); // страховка, если облако молчит
+      } else res();
+    });
+  },
+  save(){
+    const json = JSON.stringify(this.data);
+    localStorage.setItem(SKEY, json);
+    if (tg && tg.CloudStorage && tg.CloudStorage.setItem) {
+      try{ tg.CloudStorage.setItem('tp1703', json, ()=>{}); }catch(e){}
+    }
+  }
+};
+
+/* ============ УТИЛИТЫ ============ */
+const $ = s => document.querySelector(s);
+const fmt = n => n.toLocaleString('ru-RU');
+const round25 = kg => Math.round(kg/2.5)*2.5;
+const todayISO = () => new Date().toISOString().slice(0,10);
+const MONTHS = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+function haptic(type){ if(tg&&tg.HapticFeedback){ try{ type==='ok'?tg.HapticFeedback.notificationOccurred('success'):tg.HapticFeedback.impactOccurred('light'); }catch(e){} } }
+
+function cycleForWeek(w){
+  if (w>=10) return null;
+  for (const key in CYCLES) if (CYCLES[key].weeks.includes(w)) return key;
+  return null;
+}
+function setsForWeek(w){ return w<=3?3 : w<=6?4 : 5; }
+function repsFor(ex, week){
+  if (Array.isArray(ex.r)) { const block = week<=3?0 : week<=6?1 : 2; return ex.r[block]; }
+  return ex.r;
+}
+function benchSession(week, workoutNum){
+  if (week>=10) return 19;
+  if (workoutNum===1) return (week-1)*2+1;
+  if (workoutNum===3) return (week-1)*2+2;
+  return null;
+}
+function benchKg(p){ return round25(store.data.benchRM * p/100); }
+
+/* ============ НАВИГАЦИЯ ============ */
+function setProgram(p){
+  store.data.program = p; store.save();
+  $('#sw-tengo').classList.toggle('on', p==='tengo');
+  $('#sw-aomame').classList.toggle('on', p==='aomame');
+  haptic('ok');
+  renderHome();
+}
+function go(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
+  $('#scr-'+name).classList.add('active');
+  $('#nav-'+name).classList.add('on');
+  if(name==='home') renderHome();
+  if(name==='weight') renderWeight();
+  if(name==='workout'){ woView=null; aView=null; renderWorkout(); }
+  if(name==='program') renderProgram();
+  window.scrollTo(0,0);
+  haptic();
+}
+
+/* ============ ГЛАВНАЯ ============ */
+let calCursor = new Date();
+function calShift(d){ calCursor.setMonth(calCursor.getMonth()+d); renderCalendar(); }
+
+function renderHome(){
+  const d = new Date();
+  $('#home-date').textContent = `${d.getDate()} ${MONTHS_GEN[d.getMonth()]} ${d.getFullYear()}`;
+
+  const ws = store.data.weights;
+  if (ws.length){
+    const last = ws[ws.length-1];
+    $('#home-weight').innerHTML = `${String(last.kg).replace('.',',')}<small>кг</small>`;
+    const diff = ws.length>1 ? (last.kg - ws[ws.length-2].kg) : 0;
+    $('#home-weight-hint').textContent = ws.length>1
+      ? (diff===0 ? 'без изменений' : (diff>0?'+':'−') + Math.abs(diff).toFixed(1).replace('.',',') + ' кг с прошлого раза')
+      : 'первая запись';
+  }
+
+  const weekAgo = Date.now() - 7*864e5;
+  const vol = store.data.history.filter(h=>new Date(h.date).getTime()>=weekAgo).reduce((s,h)=>s+h.tonnage,0);
+  $('#home-volume').innerHTML = `${fmt(vol)}<small>кг</small>`;
+
+  $('#sw-tengo').classList.toggle('on', store.data.program==='tengo');
+  $('#sw-aomame').classList.toggle('on', store.data.program==='aomame');
+
+  if (store.data.program==='aomame'){
+    const n = store.data.aWorkout;
+    $('#next-title').textContent = `Тренировка ${n} · круговая`;
+    $('#next-meta').textContent = '4 круга в блоках · внутри круга без отдыха · между кругами 90–120 сек';
+  } else {
+    const w = store.data.week, n = store.data.workout;
+    if (w>=10){
+      $('#next-title').textContent = 'Проходка на максимум';
+      $('#next-meta').textContent = 'неделя 10 · финал цикла';
+    } else {
+      const c = CYCLES[cycleForWeek(w)];
+      $('#next-title').textContent = `Тренировка ${n} · ${c.name.toLowerCase()}`;
+      $('#next-meta').textContent = `неделя ${w} из 10 · ${setsForWeek(w)} подхода в упражнениях · отдых строго 2 мин`;
+    }
+  }
+  renderCalendar();
+}
+
+function renderCalendar(){
+  const y = calCursor.getFullYear(), m = calCursor.getMonth();
+  const mKey = `${y}-${String(m+1).padStart(2,'0')}`;
+  const monthVol = store.data.history
+    .filter(h=>h.date.startsWith(mKey))
+    .reduce((s,h)=>s+h.tonnage,0);
+  $('#cal-title').innerHTML = `${MONTHS[m]} ${y}` +
+    (monthVol>0 ? ` <span style="font-family:var(--serif);font-weight:400;color:var(--muted)">· ${fmt(monthVol)} кг</span>` : '');
+  const doneDates = new Set(store.data.history.map(h=>h.date));
+  const weightDates = new Set(store.data.weights.map(w=>w.date));
+  const first = new Date(y,m,1);
+  const startDow = (first.getDay()+6)%7; // пн=0
+  const days = new Date(y,m+1,0).getDate();
+  const today = todayISO();
+  let html = ['пн','вт','ср','чт','пт','сб','вс'].map(d=>`<div class="dow">${d}</div>`).join('');
+  for(let i=0;i<startDow;i++) html += `<div class="cal-cell dim"></div>`;
+  for(let d=1;d<=days;d++){
+    const iso = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const cls = ['cal-cell'];
+    if (iso===today) cls.push('today');
+    if (doneDates.has(iso)) cls.push('done');
+    html += `<div class="${cls.join(' ')}">${d}${weightDates.has(iso)?'<span class="w"></span>':''}</div>`;
+  }
+  $('#cal-grid').innerHTML = html;
+}
+
+/* ============ ВЕС ============ */
+function addWeight(){
+  const v = parseFloat($('#w-input').value.replace(',','.'));
+  if (!v || v<30 || v>250){ toast('Введи вес в кг'); return; }
+  const date = todayISO();
+  const ws = store.data.weights;
+  const same = ws.find(w=>w.date===date);
+  if (same) same.kg = v; else ws.push({date, kg:v});
+  ws.sort((a,b)=>a.date.localeCompare(b.date));
+  store.save(); $('#w-input').value='';
+  haptic('ok'); toast('Вес записан');
+  renderWeight();
+}
+function delWeight(date){
+  store.data.weights = store.data.weights.filter(w=>w.date!==date);
+  store.save(); renderWeight();
+}
+function renderWeight(){
+  const ws = store.data.weights;
+  const log = $('#w-log');
+  if (!ws.length){ log.innerHTML = '<div class="hint">Пока пусто. Первая запись появится здесь.</div>'; }
+  else {
+    log.innerHTML = [...ws].reverse().slice(0,30).map(w=>{
+      const d = new Date(w.date);
+      return `<div class="log-item"><b>${String(w.kg).replace('.',',')} кг</b>
+        <span>${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)} ${d.getFullYear()}</span>
+        <button class="del" onclick="delWeight('${w.date}')" aria-label="удалить">×</button></div>`;
+    }).join('');
+  }
+  // график
+  const svg = $('#w-chart');
+  if (ws.length<2){ svg.innerHTML=''; $('#w-range').textContent = ws.length? 'нужно минимум две записи для графика':''; return; }
+  const pts = ws.slice(-24);
+  const min = Math.min(...pts.map(p=>p.kg)), max = Math.max(...pts.map(p=>p.kg));
+  const pad = (max-min)||1;
+  const X = i => 8 + i*(304/(pts.length-1));
+  const Y = kg => 138 - ((kg-min)/pad)*126;
+  const path = pts.map((p,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(p.kg).toFixed(1)}`).join(' ');
+  svg.innerHTML = `
+    <path d="${path}" stroke="#1B1915" stroke-width="2" fill="none" stroke-linecap="round"/>
+    ${pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p.kg)}" r="3" fill="#1B1915"/>`).join('')}
+  `;
+  $('#w-range').textContent = `диапазон: ${min.toFixed(1).replace('.',',')} — ${max.toFixed(1).replace('.',',')} кг · последние ${pts.length} записей`;
+}
+
+/* ============ ТЕКУЩАЯ ТРЕНИРОВКА ============ */
+let sessionChecks = {}; // {exIdx: [bool...]}
+let woView = null;      // просматриваемая тренировка Tengo: {week, workout} | null = текущая
+let aView = null;       // просматриваемая тренировка Aomame: номер | null = текущая
+
+/* Tengo: сквозной индекс 0..27 (9 недель × 3 + проходка) */
+function tengoIdx(w,n){ return w>=10 ? 27 : (w-1)*3 + (n-1); }
+function tengoFromIdx(i){ return i>=27 ? {week:10, workout:1} : {week:Math.floor(i/3)+1, workout:i%3+1}; }
+
+function woShift(d){
+  haptic();
+  if (store.data.program==='aomame'){
+    const cur = aView ?? store.data.aWorkout;
+    aView = ((cur-1+d)%3+3)%3 + 1;
+  } else {
+    const cur = woView ?? {week:store.data.week, workout:store.data.workout};
+    const i = Math.min(27, Math.max(0, tengoIdx(cur.week, cur.workout)+d));
+    woView = tengoFromIdx(i);
+  }
+  renderWorkout();
+}
+
+function renderWorkout(){
+  if (store.data.program==='aomame'){ renderAomameWorkout(); return; }
+  const v = woView ?? {week:store.data.week, workout:store.data.workout};
+  const w = v.week, n = v.workout;
+  const onPlan = (w===store.data.week && n===store.data.workout);
+  $('#wo-pos').textContent = w>=10 ? 'неделя 10 · проходка' : `неделя ${w} · тренировка ${n}`;
+  $('#wo-offplan').style.display = onPlan ? 'none' : 'block';
+  const body = $('#wo-body');
+  sessionChecks = {};
+
+  if (w>=10){
+    $('#wo-title').textContent = 'Проходка';
+    $('#wo-sub').textContent = 'неделя 10 · жим лёжа на максимум';
+    body.innerHTML = `
+      <div class="card light">
+        <div class="label">жим штанги лёжа</div>
+        <p style="font-size:15px">Разминочные подходы с шагом 10–20 кг по 3–5 повторов, затем подводящие синглы и выход на новый максимум. Не забудь страхующего.</p>
+        <div class="divider"></div>
+        <div class="label">новый 1ПМ, кг</div>
+        <div class="inline">
+          <input type="number" id="new-rm" inputmode="decimal" step="2.5" placeholder="${store.data.benchRM}">
+          <button class="btn" onclick="finishMax()">Зафиксировать</button>
+        </div>
+        <div class="hint">новый максимум пересчитает всю таблицу жима, цикл начнётся с недели 1</div>
+      </div>`;
+    return;
+  }
+
+  const key = cycleForWeek(w);
+  const cyc = CYCLES[key];
+  const sets = setsForWeek(w);
+  const exs = cyc.workouts[n-1];
+  $('#wo-title').textContent = `Тренировка ${n}`;
+  $('#wo-sub').textContent = `${cyc.name} микроцикл · неделя ${w} · отдых между подходами и упражнениями — строго 2 минуты`;
+
+  let html = '';
+  exs.forEach((ex,i)=>{
+    if (ex.r===BENCH){
+      const sIdx = benchSession(w,n)-1;
+      const parts = BENCH_PROGRAM[sIdx];
+      html += `<div class="ex">
+        <div class="ex-head"><div class="ex-name">${ex.n}</div><span class="tag dark">сессия ${sIdx+1}</span></div>
+        <div class="ex-note">по программе весов · 1ПМ = ${store.data.benchRM} кг · разминка с шагом 10–20 кг × 3–5</div>
+        <div style="margin-top:10px">
+          ${parts.map(p=>`<div class="bench-part">
+            <span class="kg">${benchKg(p.p)} кг</span>
+            <span class="pct"> · ${String(p.p).replace('.',',')}% · ${p.r}×${p.s}${p.note?' · '+p.note:''}</span>
+          </div>`).join('')}
+        </div>
+        ${renderSets(i, parts.reduce((s,p)=>s+p.s,0))}
+      </div>`;
+    } else {
+      const reps = repsFor(ex,w);
+      const isFail = reps===FAIL;
+      const saved = store.data.workWeights[ex.n] ?? '';
+      html += `<div class="ex">
+        <div class="ex-head">
+          <div class="ex-name">${ex.n}</div>
+          <div class="ex-scheme">${sets}×${isFail?'отказ':reps}</div>
+        </div>
+        <div class="ex-controls">
+          <input type="number" inputmode="decimal" step="0.5" placeholder="кг" value="${saved}"
+                 onchange="setWW('${ex.n.replace(/'/g,"\\'")}', this.value)">
+          ${isFail?`<input type="number" inputmode="numeric" placeholder="повт." style="max-width:90px" id="fail-reps-${i}">`:''}
+        </div>
+        ${renderSets(i, sets)}
+      </div>`;
+    }
+  });
+  html += `<button class="btn" style="margin-top:8px" onclick="finishWorkout()">Завершить тренировку</button>
+           <div class="hint" style="text-align:center;margin-top:10px">дата, тоннаж и отметка в календаре сохранятся автоматически</div>`;
+  body.innerHTML = html;
+}
+
+function renderSets(exIdx, count){
+  sessionChecks[exIdx] = new Array(count).fill(false);
+  let dots = '';
+  for(let s=0;s<count;s++) dots += `<button class="set-dot" onclick="toggleSet(${exIdx},${s},this)">${s+1}</button>`;
+  return `<div class="sets">${dots}</div>`;
+}
+function toggleSet(e,s,btn){
+  sessionChecks[e][s] = !sessionChecks[e][s];
+  btn.classList.toggle('on');
+  haptic();
+}
+function setWW(name, val){
+  const v = parseFloat(String(val).replace(',','.'));
+  if (v>=0) { store.data.workWeights[name]=v; store.save(); }
+}
+
+function finishWorkout(){
+  const v = woView ?? {week:store.data.week, workout:store.data.workout};
+  const w = v.week, n = v.workout;
+  const key = cycleForWeek(w), cyc = CYCLES[key], sets = setsForWeek(w);
+  let tonnage = 0;
+  cyc.workouts[n-1].forEach((ex,i)=>{
+    if (ex.r===BENCH){
+      const parts = BENCH_PROGRAM[benchSession(w,n)-1];
+      parts.forEach(p=>{ if(!p.hold && p.p) tonnage += benchKg(p.p)*p.r*p.s; });
+    } else {
+      const kg = store.data.workWeights[ex.n]||0;
+      let reps = repsFor(ex,w);
+      if (reps===FAIL){
+        const el = document.getElementById('fail-reps-'+i);
+        reps = el && parseInt(el.value)>0 ? parseInt(el.value) : 0;
+      }
+      tonnage += kg*reps*sets;
+    }
+  });
+  tonnage = Math.round(tonnage);
+  store.data.history.push({date:todayISO(), week:w, workout:n, tonnage});
+  if (store.data.history.length>300) store.data.history = store.data.history.slice(-300);
+  // продвижение по циклу
+  if (n<3) store.data.workout = n+1;
+  else { store.data.workout = 1; store.data.week = w+1; }
+  store.save();
+  haptic('ok');
+  toast(`Готово · ${fmt(tonnage)} кг за тренировку`);
+  go('home');
+}
+
+function renderAomameWorkout(){
+  const n = aView ?? store.data.aWorkout;
+  const wo = AOMAME[n-1];
+  sessionChecks = {};
+  $('#wo-pos').textContent = `тренировка ${n} из 3`;
+  $('#wo-offplan').style.display = (n===store.data.aWorkout) ? 'none' : 'block';
+  $('#wo-title').textContent = `Тренировка ${n}`;
+  $('#wo-sub').textContent = 'Aomame · круговая · упражнения внутри круга подряд, без отдыха';
+  let html = '';
+  wo.blocks.forEach((b,bi)=>{
+    html += `<div class="ex">
+      <div class="ex-head"><div class="ex-name">${b.title}</div><span class="tag dark">${b.rounds} круга</span></div>
+      <div class="ex-note">${b.rest}${b.note?' · '+b.note:''}</div>
+      <div style="margin-top:10px">
+        ${b.ex.map(e=>{
+          const saved = store.data.aWeights[e.n];
+          return `<div class="bench-part">
+            <div style="font-weight:600;font-size:14px">${e.n}</div>
+            <div class="ex-controls" style="margin-top:8px">
+              <input type="number" inputmode="decimal" step="0.5" placeholder="кг"
+                value="${saved!==undefined?saved:(e.def||'')}"
+                onchange="setAW('${e.n.replace(/'/g,"\\'")}', this.value)">
+              <span class="pct">× ${e.disp} повт.</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      ${renderSets(bi, b.rounds)}
+    </div>`;
+  });
+  html += `<div class="ex">
+    <div class="ex-head"><div class="ex-name">Заминка</div></div>
+    <div style="margin-top:8px">${wo.cooldown.map(c=>`<div class="bench-part" style="font-size:14px">${c}</div>`).join('')}</div>
+  </div>
+  <button class="btn" style="margin-top:8px" onclick="finishAomame()">Завершить тренировку</button>
+  <div class="hint" style="text-align:center;margin-top:10px">дата, тоннаж и отметка в календаре сохранятся автоматически</div>`;
+  $('#wo-body').innerHTML = html;
+}
+function setAW(name, val){
+  const v = parseFloat(String(val).replace(',','.'));
+  if (v>=0) { store.data.aWeights[name]=v; store.save(); }
+}
+function finishAomame(){
+  const n = aView ?? store.data.aWorkout;
+  const wo = AOMAME[n-1];
+  let tonnage = 0;
+  wo.blocks.forEach(b=>{
+    b.ex.forEach(e=>{
+      const kg = store.data.aWeights[e.n] !== undefined ? store.data.aWeights[e.n] : (e.def||0);
+      tonnage += kg * e.reps * b.rounds;
+    });
+  });
+  tonnage = Math.round(tonnage);
+  store.data.history.push({date:todayISO(), prog:'aomame', workout:n, tonnage});
+  if (store.data.history.length>300) store.data.history = store.data.history.slice(-300);
+  store.data.aWorkout = n<3 ? n+1 : 1;
+  store.save();
+  haptic('ok');
+  aView = null;
+  toast(`Готово · ${fmt(tonnage)} кг за тренировку`);
+  go('home');
+}
+
+function finishMax(){
+  const v = parseFloat($('#new-rm').value.replace(',','.'));
+  if (!v || v<20){ toast('Введи новый максимум'); return; }
+  store.data.benchRM = v;
+  store.data.history.push({date:todayISO(), week:10, workout:1, tonnage:Math.round(v)});
+  store.data.week = 1; store.data.workout = 1;
+  store.save();
+  haptic('ok');
+  toast(`Новый 1ПМ: ${v} кг. Цикл перезапущен`);
+  go('home');
+}
+
+/* ============ ПРОГРАММА ============ */
+let progCurrent = 'pump';
+function progTab(key, btn){
+  progCurrent = key;
+  document.querySelectorAll('#prog-seg button').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  renderProgram();
+}
+function renderProgram(){
+  const body = $('#prog-body');
+  if (store.data.program==='aomame'){
+    $('#prog-seg').style.display = 'none';
+    $('#tengo-pos').style.display = 'none';
+    let html = `<div class="hint" style="margin-bottom:12px">ротация Т1 → Т2 → Т3 → Т1 · 4 круга в каждом блоке · веса сохраняются и подставляются в тренировку</div>`;
+    AOMAME.forEach((wo,wi)=>{
+      html += `<div class="card light"><div class="label">тренировка ${wi+1}${wi+1===store.data.aWorkout?' · следующая':''}</div><table>
+        <tr><th>упражнение</th><th style="text-align:right">повт.</th><th style="text-align:right">кг</th></tr>`;
+      wo.blocks.forEach(b=>{
+        b.ex.forEach(e=>{
+          html += `<tr><td>${e.n}<div style="font-size:11px;color:var(--muted)">${b.title} · ${b.rounds} круга</div></td>
+            <td class="serif" style="text-align:right">${e.disp}</td>
+            <td style="text-align:right"><input type="number" inputmode="decimal" step="0.5"
+              style="max-width:78px;padding:8px 10px;text-align:right"
+              value="${store.data.aWeights[e.n] !== undefined ? store.data.aWeights[e.n] : (e.def||'')}" placeholder="—"
+              onchange="setAW('${e.n.replace(/'/g,"\\'")}', this.value)"></td></tr>`;
+        });
+      });
+      html += `</table><div class="hint" style="margin-top:8px">заминка: ${wo.cooldown.join(' · ')}</div></div>`;
+    });
+    html += `<div class="card light">
+      <div class="label">позиция в ротации</div>
+      <div class="inline" style="margin-bottom:10px">
+        <select id="a-set-workout">
+          <option value="1">Тренировка 1</option><option value="2">Тренировка 2</option><option value="3">Тренировка 3</option>
+        </select>
+      </div>
+      <button class="btn ghost" onclick="saveAPosition()">Сохранить позицию</button>
+    </div>`;
+    body.innerHTML = html;
+    $('#a-set-workout').value = store.data.aWorkout;
+    return;
+  }
+  $('#prog-seg').style.display = '';
+  $('#tengo-pos').style.display = '';
+  // селекторы позиции
+  const wSel = $('#set-week');
+  if (!wSel.options.length){
+    for(let i=1;i<=10;i++){ const o=document.createElement('option'); o.value=i; o.textContent = i<10?`Неделя ${i}`:'Неделя 10 · проходка'; wSel.appendChild(o); }
+  }
+  wSel.value = store.data.week; $('#set-workout').value = store.data.workout;
+
+  if (progCurrent==='bench'){ renderBench(body); return; }
+  const cyc = CYCLES[progCurrent];
+  let html = `<div class="hint" style="margin-bottom:12px">недели ${cyc.weeks.join(', ')} · подходов: 3 → 4 → 5 по кругам цикла · рабочие веса сохраняются и подставляются в тренировку</div>`;
+  cyc.workouts.forEach((exs,wi)=>{
+    html += `<div class="card light"><div class="label">тренировка ${wi+1}</div><table>
+      <tr><th>упражнение</th><th style="text-align:right">повт.</th><th style="text-align:right">кг</th></tr>`;
+    exs.forEach(ex=>{
+      const reps = ex.r===BENCH ? 'программа' : Array.isArray(ex.r) ? ex.r.join('/') : ex.r;
+      const kg = ex.r===BENCH ? '' :
+        `<input type="number" inputmode="decimal" step="0.5" style="max-width:78px;padding:8px 10px;text-align:right"
+          value="${store.data.workWeights[ex.n] ?? ''}" placeholder="—"
+          onchange="setWW('${ex.n.replace(/'/g,"\\'")}', this.value)">`;
+      html += `<tr><td>${ex.n}</td><td class="serif" style="text-align:right">${reps}</td><td style="text-align:right">${kg}</td></tr>`;
+    });
+    html += `</table></div>`;
+  });
+  body.innerHTML = html;
+}
+
+function renderBench(body){
+  const rm = store.data.benchRM;
+  const sIdxNow = store.data.week<10
+    ? (store.data.workout===1 ? benchSession(store.data.week,1) : benchSession(store.data.week,3))
+    : 19;
+  let html = `
+  <div class="card light">
+    <div class="label">твой максимум на 1 повтор</div>
+    <div class="inline">
+      <input type="number" id="rm-input" inputmode="decimal" step="2.5" value="${rm}">
+      <button class="btn" onclick="saveRM()">Пересчитать</button>
+    </div>
+    <div class="hint">все проценты и вся программа ниже считаются от этого числа, округление до 2,5 кг</div>
+  </div>
+  <div class="card light">
+    <div class="label">таблица процентов</div>
+    <table><tr><th>%</th><th style="text-align:right">кг</th><th style="width:24px"></th><th>%</th><th style="text-align:right">кг</th></tr>`;
+  for(let i=0;i<PCT_LIST.length;i+=2){
+    const a=PCT_LIST[i], b=PCT_LIST[i+1];
+    html += `<tr>
+      <td>${String(a).replace('.',',')}%</td><td class="serif" style="text-align:right">${benchKg(a)}</td><td></td>
+      ${b?`<td>${String(b).replace('.',',')}%</td><td class="serif" style="text-align:right">${benchKg(b)}</td>`:'<td></td><td></td>'}
+    </tr>`;
+  }
+  html += `</table></div>
+  <div class="card light">
+    <div class="label">программа жима · 10 недель</div>
+    <table><tr><th>нед</th><th>сессия</th><th>схема (кг × повт × подх)</th></tr>`;
+  BENCH_PROGRAM.forEach((parts,i)=>{
+    const week = Math.floor(i/2)+1;
+    const isNow = false;
+    const scheme = parts[0].max ? 'Проходка на максимум'
+      : parts.map(p=>`${benchKg(p.p)}×${p.r}×${p.s}${p.note?' <span style="color:var(--muted)">('+p.note+')</span>':''}`).join('; ');
+    html += `<tr${i+1===sIdxNow?' class="now"':''}><td class="serif">${i<18?week:10}</td><td class="serif">${i+1}</td><td>${scheme}</td></tr>`;
+  });
+  html += `</table><div class="hint">подсвечена ближайшая жимовая сессия · «Удержание» — 10–15 сек в верхней точке со страхующим</div></div>`;
+  body.innerHTML = html;
+}
+
+function saveRM(){
+  const v = parseFloat($('#rm-input').value.replace(',','.'));
+  if (!v || v<20){ toast('Введи корректный 1ПМ'); return; }
+  store.data.benchRM = v; store.save();
+  haptic('ok'); toast('Таблица пересчитана');
+  renderProgram();
+}
+
+function savePosition(){
+  store.data.week = parseInt($('#set-week').value);
+  store.data.workout = parseInt($('#set-workout').value);
+  store.save(); haptic('ok'); toast('Позиция сохранена');
+}
+function saveAPosition(){
+  store.data.aWorkout = parseInt($('#a-set-workout').value);
+  store.save(); haptic('ok'); toast('Позиция сохранена');
+}
+
+/* ============ СТАРТ ============ */
+store.load().then(()=>{ renderHome(); });
+</script>
+</body>
+</html>
