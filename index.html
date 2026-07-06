@@ -1,51 +1,243 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
 <title>Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@500;600&display=swap" rel="stylesheet">
 <style>
+html[data-theme="dark"]{
+  --bg:#000; --card:#0e0e0e; --card-act:#161616;
+  --text:#fff; --muted:#6e6e73; --faint:#3a3a3c;
+  --red:#ff453a; --blue:#5b8cff;
+  --dot:#3d6bff; --float:rgba(255,255,255,.16);
+}
+html[data-theme="light"]{
+  --bg:#f2f2f7; --card:#ffffff; --card-act:#e9e9ee;
+  --text:#000; --muted:#8e8e93; --faint:#c7c7cc;
+  --red:#ff3b30; --blue:#2946d8;
+  --dot:#2b4bd7; --float:rgba(0,0,0,.14);
+}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{
-  min-height:100dvh;background:#000;color:#fff;
+  min-height:100dvh;background:var(--bg);color:var(--text);
   font-family:'Inter',-apple-system,sans-serif;
   display:flex;flex-direction:column;justify-content:center;
   padding:32px 24px calc(32px + env(safe-area-inset-bottom,0px));
   max-width:560px;margin:0 auto;
+  transition:background .3s;
 }
-h1{font-family:'JetBrains Mono',monospace;font-size:15px;letter-spacing:6px;color:#6e6e73;margin-bottom:36px;text-align:center}
+#menu{opacity:0;transform:translateY(14px);transition:opacity .5s,transform .5s}
+#menu.show{opacity:1;transform:none}
+h1{font-family:'JetBrains Mono',monospace;font-size:15px;letter-spacing:6px;color:var(--muted);margin-bottom:36px;text-align:center}
 a.card{
-  display:block;text-decoration:none;color:#fff;
-  background:#0e0e0e;border-radius:24px;
+  display:block;text-decoration:none;color:var(--text);
+  background:var(--card);border-radius:24px;
   padding:28px 26px;margin-bottom:16px;
   transition:transform .12s, background .12s;
 }
-a.card:active{transform:scale(.97);background:#161616}
-.mark{font-family:'JetBrains Mono',monospace;font-size:34px;font-weight:700;letter-spacing:3px}
-.mark .accent{color:#ff453a}
-.desc{color:#6e6e73;font-size:15px;margin-top:8px;font-weight:500}
-.arrow{float:right;color:#3a3a3c;font-size:26px;margin-top:10px}
-footer{text-align:center;margin-top:34px;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:3px;color:#3a3a3c}
+a.card:active{transform:scale(.97);background:var(--card-act)}
+.mark{font-family:'JetBrains Mono',monospace;font-size:34px;font-weight:700;letter-spacing:3px;min-height:44px}
+.mark .r{color:var(--red)}
+.mark .b{color:var(--blue)}
+.desc{color:var(--muted);font-size:15px;margin-top:8px;font-weight:500}
+.today{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--blue);margin-top:10px}
+.arrow{float:right;color:var(--faint);font-size:26px;margin-top:10px}
+footer{text-align:center;margin-top:34px;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:3px;color:var(--faint)}
+
+/* ---- preloader ---- */
+#loader{
+  position:fixed;inset:0;z-index:50;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity .55s;
+}
+#loader.out{opacity:0;pointer-events:none}
+#pl{display:block}
+#plWord{
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;letter-spacing:5px;color:var(--muted);
+  margin-top:6px;display:flex;align-items:baseline;gap:2px;
+}
+#plWord .d{animation:blink 1.2s infinite}
+#plWord .d:nth-child(2){animation-delay:.2s}
+#plWord .d:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,60%,100%{opacity:.2}30%{opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  #loader{display:none}
+  #menu{opacity:1;transform:none;transition:none}
+}
 </style>
 </head>
 <body>
+
+<div id="menu">
   <h1>ВЫБЕРИ ПРИЛОЖЕНИЕ</h1>
 
   <a class="card" href="workout.html">
     <span class="arrow">›</span>
-    <div class="mark">17<span class="accent">03</span></div>
+    <div class="mark" id="mark1703"><span class="w">17</span><span class="r">03</span></div>
     <div class="desc">Тренировки · программа, веса, прогресс</div>
   </a>
 
   <a class="card" href="1q84.html">
     <span class="arrow">›</span>
-    <div class="mark">1Q<span class="accent">84</span></div>
+    <div class="mark" id="mark1q84"><span class="w">1Q</span><span class="b">84</span></div>
     <div class="desc">Привычки · рутина, календарь, статистика</div>
+    <div class="today" id="q84today" hidden></div>
   </a>
 
   <footer>BY NIKOLAI</footer>
+</div>
+
+<div id="loader">
+  <canvas id="pl"></canvas>
+  <div id="plWord">ЗАГРУЗКА<span class="d">.</span><span class="d">.</span><span class="d">.</span></div>
+</div>
+
+<script>
+/* ================= Theme: follow the 1Q84 app setting ================= */
+function syncTheme(){
+  let theme='dark';
+  try{
+    const raw=localStorage.getItem('1q84_v1');
+    if(raw){ const t=JSON.parse(raw).theme; if(t==='light'||t==='dark') theme=t; }
+  }catch(e){}
+  document.documentElement.setAttribute('data-theme', theme);
+  document.querySelector('meta[name="theme-color"]')
+    .setAttribute('content', theme==='dark' ? '#000000' : '#f2f2f7');
+  return theme;
+}
+syncTheme();
+window.addEventListener('pageshow', ()=>{ syncTheme(); q84Today(); });
+window.addEventListener('storage', syncTheme);
+
+/* ================= Today status for 1Q84 card ================= */
+function q84Today(){
+  try{
+    const raw=localStorage.getItem('1q84_v1'); if(!raw) return;
+    const st=JSON.parse(raw);
+    if(!Array.isArray(st.trackers) || !st.trackers.length) return;
+    const d=new Date();
+    const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const day=st.entries && st.entries[iso] || {};
+    const done=st.trackers.filter(t=>day[t.id]!==undefined).length;
+    const el=document.getElementById('q84today');
+    el.textContent='СЕГОДНЯ '+done+' / '+st.trackers.length;
+    el.hidden=false;
+  }catch(e){}
+}
+q84Today();
+
+/* ================= Preloader: galloping dot horseman ================= */
+/* 15 frames traced from the reference GIF; 2 chars per dot, half-grid units */
+const HORSE_FRAMES = ["J0L0J2L2H4J4T4V4F6H6J6L6R6T6V6X6>8@8B8D8F8H8L8N8P8R8T8V8X8Z84:6:8:::<:>:@:B:D:F:H:J:L:N:P:R:T:X:Z:\\:2<4<6<<<><@<B<D<F<H<J<L<N<P<R<Z<<>>>@>B>D>F>H>J>L>N>P>:@<@>@@@F@H@J@L@N@:B>BJBLB<D>D@DHDJDLD>FBFFFHFLFFHHHJHLHDJBL", "J1L1H3J3L3F5H5J5R5T5D7F7H7J7N7P7R7T7V7<9>9@9B9D9F9H9L9N9P9R9T9V9X9Z92;4;6;8;:;<;>;@;B;D;F;H;J;L;N;P;R;X;2=4=:=<=>=@=B=D=F=H=J=L=N=P=<?>?@?B?D?F?H?J?L?N?<A>A@AFAHAJALANA:C>CJCLC<E>E@EJENE>G@GBGDGFGHGNGBIDIJILI", "J1L1H3J3L3F5H5J5T5V5F7H7J7L7N7P7R7T7V7X7>9@9B9D9F9H9L9N9P9R9T9V9X9Z92;4;6;8;:;<;>;@;B;D;F;H;J;L;N;P;R;X;Z;2=4=:=<=>=@=B=D=F=H=J=L=N=P=<?>?@?B?D?F?H?J?L?N?P?@ABAHAJALA>CBCJCNC@EBEDEJEPEBGDGFGHGPGFINI", "L1N1J3L3N3H5J5V5F7H7J7L7R7T7V7X7F9H9J9N9P9R9T9V9X9Z94;6;8;:;<;>;@;B;D;F;H;J;L;N;P;R;T;X;Z;2=4=6=8=<=>=@=B=D=F=H=J=L=N=P=R=4?<?>?@?B?D?F?H?J?L?N?P?>A@ABAHAJALANAPA>C@CJCLCRC>E@EBEDELETEBGFGHGJGLGRGDIRIFK", "L0N0J2L2N2H4J4L4F6H6J6L6P6R6T6V6F8H8L8N8P8R8T8V8X84:<:>:@:B:D:F:H:J:L:N:P:R:T:V:X:Z:2<4<6<8<:<<<><@<B<D<F<H<J<L<N<P<X<Z<2>4>:><>>>@>B>D>F>H>J>L>N>P><@>@@@B@D@F@H@J@L@N@>B@BHBJBLBNBPB@DBDNDRD@FDFFFJFNFTF@HHHLHTHBJTJDL", "L0N0J2L2N2H4J4F6H6J6L6R6T6V6X6F8H8L8N8P8R8T8V8X84:::<:>:@:B:D:F:H:J:L:N:P:R:T:V:X:Z:2<4<6<8<<<><@<B<D<F<H<J<L<N<P<R<Z<<>>>@>B>D>F>H>J>L>N>P><@>@@@B@D@F@H@J@L@N@P@>B@BBBLBNBPBRB>DBDRDTD<FDFPFVF<HFHHHLHNHXH<JHJXJ>L", "K2G4I4E6G6I6S6W6E8G8K8M8O8Q8S8U8W8=:?:A:C:E:G:I:K:M:O:Q:S:U:W:Y:3<5<7<9<;<=<?<A<C<E<G<I<K<M<O<Q<W<Y<3>;>=>?>A>C>E>G>I>K>M>O>;@=@?@A@C@E@G@I@K@M@O@;B=B?BIBKBMBOBQBSB9D;D?DQDSD7F?FQFUF7HAHOHWH7JCJ7L9LEL", "K0I2K2G4I4E6G6I6K6S6U6E8G8M8O8Q8S8U8W8Y8G:I:K:M:O:Q:S:U:W:Y:3<5<7<9<;<=<?<A<C<E<G<I<K<M<O<Q<S<Y<1>3>9>;>=>?>A>C>E>G>I>K>M>O>Q>[>9@;@=@?@A@C@E@G@I@K@M@O@9B;B=B?BIBKBMBOBQBSB7D9D=D?DQDUD7F=FSFUF5H=HUH3J=JSJWJ5L?LALYL", "K0K2M2I4G6I6K6E8G8M8O8Q8S8U8W8Y8G:I:K:M:O:Q:S:U:W:Y:3<5<7<9<;<=<?<A<C<E<G<I<K<M<O<Q<S<Y<[<3>;>=>?>A>C>E>G>I>K>M>O>Q>[>9@;@=@?@A@C@E@G@I@K@M@O@Q@9B;B=B?BGBIBKBMBOBQBSBUB7D;D=DQDWD5F9F;FQFWF3H9HSHWH1J9JSJ9LUL", "K2I4K4G6I6K6G8I8M8O8Q8S8U8W8Y8G:I:K:M:O:Q:S:U:W:Y:[:3<5<7<9<=<?<A<C<E<G<I<K<M<O<Q<S<U<Y<[<3>5>;>=>?>A>C>E>G>I>K>M>O>Q>S>[>;@=@?@A@C@E@G@I@K@M@O@Q@9B;B=BGBIBKBMBOBQBSB5D7D9D;DODUD3F7FMFWF1H5HMHYH5JOJ5LOL", "K3M3K5I7K7G9I9M9O9S9U9W9Y93;G;I;K;M;O;Q;S;U;W;Y;[;3=5=7=9===?=A=C=E=G=I=K=M=O=Q=S=U=W=Y=[=;?=???A?C?E?G?I?K?M?O?Q?S?Y?[?;A=A?AAACAEAGAIAKAMAOAQA[A9C;C=CECGCICKCMCOCQC5E7E9EMEOESE1G3G7GMGUG5IMIWI3KMKYK[KOM", "M0M2O2K4M4I6K6M6O6G8I8K8O8Q8S8U8W8Y83:I:K:M:O:Q:S:U:W:Y:[:3<5<7<9<=<?<A<C<E<G<I<K<M<O<Q<S<W<Y<[<3>7>;>=>?>A>C>E>G>I>K>M>O>Q>Y>[>;@=@?@A@C@E@G@I@K@M@O@Q@[@7B9B;B=B?BEBGBIBKBMBOBQB7D9D;D=DKDQDSD5F7FIFSF1H3H5HGHUH3JEJWJELYL", "L0J2L2H4J4F6H6J6L6R6T6V6X6F8H8N8P8R8T8V8X8Z84:::<:>:@:B:D:F:H:J:L:N:P:R:T:V:X:Z:\\:2<4<6<8<<<><@<B<D<F<H<J<L<N<P<R<T<Z<\\<4><>>>@>B>D>F>H>J>L>N>P>R><@>@@@D@F@H@J@L@N@P@R@6B8B:B<B>BLBNBPB0D4D8DJDPD2F8FHFPF6HDHFHPHPJRL", "K0K2M2G4I4E6G6I6K6S6W6E8G8K8M8O8Q8S8U8W8Y8;:=:?:A:C:E:G:I:K:M:O:Q:S:U:W:Y:3<5<7<9<;<=<?<A<C<E<G<I<K<M<O<Q<S<Y<[<3>5>;>=>?>A>C>E>G>I>K>M>O>Q>;@=@?@C@E@G@I@K@M@O@5B7B9B;B=BGBIBKBMB3D7DIDKD3F9FAFGFKF1H9HCHEHKHKJML", "J1L1H3J3L3F5H5J5V5F7H7L7P7R7T7V7X7<9>9@9F9H9J9L9N9P9R9T9V9X9Z96;8;:;<;>;@;B;D;F;H;J;L;N;P;R;X;Z;2=4=6=8=:=<=>=@=B=D=F=H=J=L=N=P=2?:?<?@?B?D?F?H?J?L?N?6A8A:A<A>AFAHAJALANA6C:CBCJC6E<EDEHEJE6G>GFGHG4I<IFIFKHK"];
+
+(function(){
+  const reduce = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const loader = document.getElementById('loader');
+  const menu = document.getElementById('menu');
+  const canvas = document.getElementById('pl');
+  const ctx = canvas.getContext && canvas.getContext('2d');
+
+  function finish(instant){
+    if(finish.done) return; finish.done=true;
+    if(instant){ loader.style.display='none'; }
+    else loader.classList.add('out');
+    menu.classList.add('show');
+    if(!reduce) startCounters();
+  }
+  if(reduce || !ctx){ finish(true); return; }
+  loader.addEventListener('click', ()=>finish(false)); // tap to skip
+
+  /* decode frames */
+  const frames = HORSE_FRAMES.map(s=>{
+    const pts=[];
+    for(let i=0;i<s.length;i+=2)
+      pts.push([(s.charCodeAt(i)-48)/2, (s.charCodeAt(i+1)-48)/2]);
+    return pts;
+  });
+  const GW=23.5, GH=16;
+
+  /* sizing */
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  const size = Math.min(window.innerWidth*.86, 420);
+  const cw=size, chh=size*GH/GW;
+  canvas.style.width=cw+'px'; canvas.style.height=chh+'px';
+  canvas.width=cw*dpr; canvas.height=chh*dpr;
+  ctx.scale(dpr,dpr);
+  const cell=cw/GW;
+
+  const INK = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
+
+  const FRAME_MS=80;                            // native GIF timing
+  const T_TOTAL=FRAME_MS*frames.length*2 + 400; // two gallop cycles + beat
+  const R=cell*.485;
+
+  let t0=null, lastIdx=-1;
+  function draw(now){
+    if(finish.done) return;
+    if(t0===null) t0=now;
+    const t=now-t0;
+    const idx=Math.floor(t/FRAME_MS)%frames.length;
+    if(idx!==lastIdx){                          // crisp stepped frames, like the original
+      lastIdx=idx;
+      ctx.clearRect(0,0,cw,chh);
+      ctx.fillStyle=INK;
+      const f=frames[idx];
+      for(let i=0;i<f.length;i++){
+        ctx.beginPath();
+        ctx.arc(f[i][0]*cell + cell*.75, f[i][1]*cell + cell*.75, R, 0, 7);
+        ctx.fill();
+      }
+    }
+    if(t>=T_TOTAL){ finish(false); return; }
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+  /* hard fallback so the page never gets stuck */
+  setTimeout(()=>finish(false), T_TOTAL+1200);
+})();
+
+/* ================= Slot-machine counters ================= */
+function startCounters(){
+  slot(document.querySelector('#mark1703 .w'), '17', 0);
+  slot(document.querySelector('#mark1703 .r'), '03', 140);
+  slot(document.querySelector('#mark1q84 .w'), '1Q', 260);
+  slot(document.querySelector('#mark1q84 .b'), '84', 400);
+}
+function slot(el, final, delay){
+  const DIGITS='0123456789';
+  const LETTERS='QWXKZJVRTY';
+  const start=performance.now()+delay;
+  const DUR=900;
+  const easeOut=t=>1-Math.pow(1-t,4);
+  let lastSwap=0;
+  function frame(now){
+    if(now<start){ requestAnimationFrame(frame); return; }
+    const t=Math.min(1,(now-start)/DUR);
+    const interval=16+220*easeOut(t);          // fast, then smooth settle
+    const locked=Math.floor(final.length*easeOut(t)*1.15);
+    if(now-lastSwap>=interval){
+      lastSwap=now;
+      let s='';
+      for(let i=0;i<final.length;i++){
+        if(i<locked || t>=1) s+=final[i];
+        else{
+          const pool=/[0-9]/.test(final[i])?DIGITS:LETTERS;
+          s+=pool[Math.floor(Math.random()*pool.length)];
+        }
+      }
+      el.textContent=s;
+    }
+    if(t<1) requestAnimationFrame(frame);
+    else el.textContent=final;
+  }
+  el.textContent=final.replace(/./g,'0');
+  requestAnimationFrame(frame);
+}
+</script>
 </body>
 </html>
