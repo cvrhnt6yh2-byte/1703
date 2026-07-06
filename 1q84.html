@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>1Q84 — Трекер привычек</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+html[data-theme="dark"]{
+  --bg:#000000;
+  --panel:#0e0e0e;
+  --panel2:#1c1c1e;
+  --panel3:#2c2c2e;
+  --row-alt:rgba(255,255,255,.035);
+  --text:#ffffff;
+  --muted:#6e6e73;
+  --faint:#3a3a3c;
+  --hair:rgba(255,255,255,.08);
+  --red:#ff453a;
+  --red-dim:rgba(255,69,58,.16);
+  --sel:#2b2410;
+  --btn:#1c1c1e;
+  --white-btn:#ffffff;
+  --white-btn-text:#000000;
+  --heat-off:#2c2c2e;
+  --heat-on:#ffffff;
+  --overlay:rgba(0,0,0,.6);
+  --check-bg:#3a3a3c;
+}
+html[data-theme="light"]{
+  --bg:#f2f2f7;
+  --panel:#ffffff;
+  --panel2:#ffffff;
+  --panel3:#e5e5ea;
+  --row-alt:rgba(0,0,0,.03);
+  --text:#000000;
+  --muted:#8e8e93;
+  --faint:#c7c7cc;
+  --hair:rgba(0,0,0,.08);
+  --red:#ff3b30;
+  --red-dim:rgba(255,59,48,.12);
+  --sel:#fdf3cf;
+  --btn:#e5e5ea;
+  --white-btn:#000000;
+  --white-btn-text:#ffffff;
+  --heat-off:#e0e0e5;
+  --heat-on:#000000;
+  --overlay:rgba(0,0,0,.35);
+  --check-bg:#d1d1d6;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  user-select:none;
+  -webkit-user-select:none;
+}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* ---------- Layout ---------- */
+#app{height:100dvh;display:flex;flex-direction:column;padding:12px 12px calc(12px + var(--safe-b))}
+header{padding:28px 12px 18px}
+header h1{font-size:44px;font-weight:600;letter-spacing:-.5px}
+header h1 .yr{color:var(--muted);font-weight:500}
+
+/* ---------- Grid ---------- */
+#gridPanel{
+  flex:1;min-height:0;
+  background:var(--panel);
+  border-radius:24px;
+  overflow:auto;
+  overscroll-behavior:contain;
+  position:relative;
+}
+#grid{
+  display:grid;
+  min-width:100%;
+  width:max-content;
+  font-family:'JetBrains Mono',monospace;
+}
+.gcell{
+  height:52px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;
+  white-space:nowrap;
+  padding:0 14px;
+}
+.ghead{
+  position:sticky;top:0;z-index:3;
+  background:var(--panel);
+  color:var(--muted);
+  font-size:13px;letter-spacing:1px;
+  height:56px;
+  cursor:pointer;
+}
+.gday{
+  position:sticky;left:0;z-index:2;
+  background:var(--panel);
+  justify-content:flex-start;
+  gap:12px;
+  padding-left:18px;padding-right:10px;
+  cursor:pointer;
+}
+.gday .num{font-weight:600;font-size:16px}
+.gday .dow{color:var(--muted);font-size:14px}
+.gday .num.today{
+  background:var(--red);color:#fff;
+  border-radius:7px;padding:1px 5px;margin-left:-5px;
+}
+.corner{position:sticky;left:0;top:0;z-index:4;background:var(--panel)}
+.rowsel{background:var(--sel) !important}
+.rowalt{background:var(--row-alt)}
+.future{opacity:.32;pointer-events:none}
+.gval{cursor:pointer;color:var(--text)}
+.gval .dot{color:var(--faint);font-size:12px}
+.gval .x{font-size:14px}
+.gval:active{background:var(--row-alt)}
+
+/* ---------- Bottom bar ---------- */
+#bar{display:flex;gap:10px;padding-top:14px;align-items:stretch}
+.bbtn{
+  background:var(--btn);color:var(--text);
+  border:none;border-radius:18px;
+  width:58px;height:56px;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;cursor:pointer;
+}
+.bbtn:active{opacity:.7}
+#datePill{
+  flex:1;
+  background:var(--white-btn);color:var(--white-btn-text);
+  border:none;border-radius:18px;height:56px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:17px;font-weight:600;letter-spacing:2px;
+  cursor:pointer;
+}
+#datePill:active{opacity:.85}
+.chev{width:16px;height:16px;stroke:var(--text);stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- Sheets ---------- */
+#overlay{
+  position:fixed;inset:0;background:var(--overlay);
+  opacity:0;pointer-events:none;transition:opacity .28s;z-index:10;
+}
+#overlay.on{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:20;
+  background:var(--panel2);
+  border-radius:28px 28px 0 0;
+  padding:24px 22px calc(28px + var(--safe-b));
+  transform:translateY(105%);
+  transition:transform .32s cubic-bezier(.32,.72,.3,1);
+  max-height:92dvh;overflow-y:auto;
+  overscroll-behavior:contain;
+}
+.sheet.open{transform:translateY(0)}
+.sheet-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.sheet-sub{
+  font-family:'JetBrains Mono',monospace;
+  color:var(--muted);font-size:12px;letter-spacing:2px;
+  text-transform:uppercase;margin-bottom:6px;
+}
+.sheet-title{font-size:32px;font-weight:600;letter-spacing:-.3px}
+.xbtn{
+  width:46px;height:46px;flex:none;border:none;border-radius:50%;
+  background:var(--panel3);color:var(--text);
+  font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+.primary{
+  width:100%;height:60px;border:none;border-radius:18px;
+  background:var(--white-btn);color:var(--white-btn-text);
+  font-family:'JetBrains Mono',monospace;
+  font-size:16px;font-weight:700;letter-spacing:3px;
+  cursor:pointer;margin-top:22px;
+}
+.primary:active{opacity:.85}
+.action-row{display:flex;gap:12px;align-items:center;margin-top:22px}
+.action-row .primary{margin-top:0;flex:1}
+.trash{
+  width:60px;height:60px;flex:none;border:none;border-radius:18px;
+  background:var(--red-dim);color:var(--red);
+  font-size:20px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* ---------- Time wheel ---------- */
+#wheel{
+  display:flex;background:var(--panel3);border-radius:20px;
+  height:230px;position:relative;margin-top:18px;overflow:hidden;
+}
+#wheel::before{
+  content:'';position:absolute;left:10px;right:10px;top:50%;
+  transform:translateY(-50%);height:46px;
+  background:rgba(127,127,127,.18);border-radius:12px;pointer-events:none;
+}
+.wcol{
+  flex:1;overflow-y:scroll;scroll-snap-type:y mandatory;
+  padding:92px 0;scrollbar-width:none;position:relative;z-index:1;
+}
+.wcol::-webkit-scrollbar{display:none}
+.witem{
+  height:46px;scroll-snap-align:center;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'JetBrains Mono',monospace;
+  font-size:26px;color:var(--muted);transition:color .15s;
+}
+.witem.sel{color:var(--text);font-weight:600}
+
+/* ---------- Value input ---------- */
+.valwrap{display:flex;align-items:baseline;gap:12px;margin-top:22px;background:var(--panel3);border-radius:20px;padding:18px 20px}
+.valwrap input,.valwrap textarea{
+  flex:1;background:transparent;border:none;outline:none;
+  color:var(--text);font-family:'JetBrains Mono',monospace;
+  font-size:30px;font-weight:600;width:100%;
+}
+.valwrap textarea{font-size:17px;font-weight:400;resize:none;min-height:90px;line-height:1.5}
+.valwrap .unit{color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:15px;flex:none}
+
+/* ---------- Day sheet ---------- */
+#daySheet .dhead{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+#daySheet .dname{font-size:40px;font-weight:600}
+#daySheet .dbadge{text-align:right;font-family:'JetBrains Mono',monospace}
+#daySheet .dbadge .dd{font-size:22px;font-weight:700}
+#daySheet .dbadge .mm{font-size:12px;color:var(--muted);letter-spacing:1px}
+.ditem{
+  display:flex;align-items:center;gap:14px;
+  background:var(--panel3);border-radius:16px;
+  padding:16px 18px;margin-bottom:10px;cursor:pointer;
+}
+.ditem:active{opacity:.75}
+.dcheck{
+  width:30px;height:30px;flex:none;border-radius:9px;
+  background:var(--check-bg);
+  display:flex;align-items:center;justify-content:center;
+  color:var(--text);font-size:15px;
+}
+.ditem.done .dcheck{background:var(--faint)}
+.ditem .dlabel{flex:1;font-size:19px;font-weight:500}
+.ditem.done .dlabel{text-decoration:line-through;color:var(--muted)}
+.ditem .dval{font-family:'JetBrains Mono',monospace;color:var(--muted);font-size:15px}
+#dayList{min-height:120px}
+#daySwipe{touch-action:pan-y}
+
+/* ---------- Forms (new tracker) ---------- */
+.field{margin-bottom:18px}
+.flabel{font-size:19px;font-weight:600;margin-bottom:10px}
+.fhint{color:var(--muted);font-size:14px;margin-top:8px}
+.finput{
+  width:100%;background:var(--panel3);border:none;outline:none;
+  border-radius:16px;padding:16px 18px;
+  color:var(--text);font-size:19px;font-family:'Inter',sans-serif;
+}
+.finput::placeholder{color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:10px}
+.chip{
+  border:1.5px solid var(--hair);background:transparent;
+  color:var(--text);border-radius:24px;
+  padding:12px 22px;font-size:17px;cursor:pointer;font-family:'Inter',sans-serif;
+}
+.chip.sel{border-color:var(--text);background:var(--panel3)}
+select.finput{appearance:none;-webkit-appearance:none}
+
+/* ---------- Settings / lists ---------- */
+.sgroup{background:var(--panel3);border-radius:20px;margin-bottom:18px;overflow:hidden}
+.srow{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:19px 20px;font-size:18px;font-weight:500;cursor:pointer;
+}
+.srow + .srow{border-top:1px solid var(--hair)}
+.srow .arr{color:var(--muted)}
+.srow:active{background:var(--row-alt)}
+.logo{
+  text-align:center;color:var(--muted);
+  font-family:'JetBrains Mono',monospace;
+  margin:34px 0 6px;
+}
+.logo .mark{font-size:30px;font-weight:700;letter-spacing:4px;color:var(--text)}
+.logo .by{font-size:11px;letter-spacing:3px;margin-top:6px}
+
+/* theme switch */
+.switch{position:relative;width:52px;height:31px;flex:none}
+.switch input{opacity:0;width:0;height:0}
+.slider{
+  position:absolute;inset:0;background:var(--faint);
+  border-radius:31px;transition:.25s;cursor:pointer;
+}
+.slider::before{
+  content:'';position:absolute;width:27px;height:27px;
+  left:2px;top:2px;background:#fff;border-radius:50%;
+  transition:.25s;box-shadow:0 1px 3px rgba(0,0,0,.3);
+}
+.switch input:checked + .slider{background:#34c759}
+.switch input:checked + .slider::before{transform:translateX(21px)}
+
+/* trackers list */
+.titem{
+  display:flex;align-items:center;
+  background:var(--panel3);border-radius:16px;
+  padding:18px 20px;margin-bottom:10px;
+  font-size:19px;font-weight:500;cursor:pointer;
+}
+.titem .tname{flex:1}
+.titem .move{display:flex;gap:6px}
+.movebtn{
+  width:36px;height:36px;border:none;border-radius:10px;
+  background:var(--btn);color:var(--muted);
+  font-size:14px;cursor:pointer;
+}
+.dragHint{text-align:center;color:var(--muted);font-size:14px;margin-top:14px}
+
+/* ---------- Tracker detail (full screen) ---------- */
+#detail{
+  position:fixed;inset:0;z-index:30;
+  background:var(--bg);
+  padding:20px 22px calc(30px + var(--safe-b));
+  overflow-y:auto;
+  transform:translateX(100%);
+  transition:transform .3s cubic-bezier(.32,.72,.3,1);
+}
+#detail.open{transform:none}
+#detail h2{font-size:40px;font-weight:600;margin:22px 0 26px}
+.meta{margin-bottom:24px}
+.mrow{display:flex;justify-content:space-between;align-items:center;padding:12px 0;font-size:17px}
+.mrow .mk{color:var(--muted)}
+.mrow .mv{font-family:'JetBrains Mono',monospace;letter-spacing:1px}
+.mv.tag{background:var(--panel3);padding:6px 12px;border-radius:10px;font-size:13px}
+.meta{border-bottom:1px solid var(--hair)}
+.tabs{display:flex;gap:10px;margin:24px 0 20px;flex-wrap:wrap}
+.tab{
+  border:none;background:var(--panel2);color:var(--text);
+  border-radius:22px;padding:12px 22px;font-size:16px;font-weight:500;cursor:pointer;
+}
+.tab.sel{background:var(--white-btn);color:var(--white-btn-text)}
+.statcard{background:var(--panel2);border-radius:20px;padding:20px;margin-bottom:26px}
+.statcard .sk{font-family:'JetBrains Mono',monospace;color:var(--muted);font-size:12px;letter-spacing:2px;margin-bottom:44px}
+.statcard .sv{font-family:'JetBrains Mono',monospace;font-size:44px;font-weight:600}
+.h3{font-size:26px;font-weight:600;margin-bottom:16px}
+#heatwrap{background:var(--panel2);border-radius:20px;padding:18px;overflow-x:auto;margin-bottom:28px}
+#heat{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,14px);gap:4px;width:max-content}
+.hcell{width:14px;height:14px;border-radius:4px;background:var(--heat-off)}
+.hcell.on{background:var(--heat-on)}
+#heatMonths{display:flex;width:max-content;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);letter-spacing:1px}
+.entryhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
+.entryhead .cnt{font-family:'JetBrains Mono',monospace;color:var(--muted);font-size:13px;letter-spacing:1px}
+.erow{
+  display:flex;justify-content:space-between;align-items:center;
+  background:var(--panel2);border-radius:16px;
+  padding:17px 20px;margin-bottom:10px;
+  font-family:'JetBrains Mono',monospace;font-size:15px;
+}
+.erow .ed{color:var(--muted);letter-spacing:1px}
+.detbtns{display:flex;gap:12px;margin-top:30px}
+.detbtns button{
+  flex:1;height:58px;border:none;border-radius:16px;
+  font-family:'JetBrains Mono',monospace;font-size:15px;
+  font-weight:700;letter-spacing:2px;cursor:pointer;
+}
+#btnEdit{background:var(--panel2);color:var(--text)}
+#btnDelete{background:var(--red-dim);color:var(--red)}
+.empty{color:var(--muted);text-align:center;padding:26px 0;font-size:15px}
+
+@media (min-width:700px){
+  #app{max-width:560px;margin:0 auto}
+  .sheet,#detail{max-width:560px;left:50%;transform:translate(-50%,105%)}
+  .sheet.open{transform:translate(-50%,0)}
+  #detail{transform:translate(calc(-50% + 100%),0)}
+  #detail.open{transform:translate(-50%,0)}
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header><h1 id="hMonth"></h1></header>
+  <div id="gridPanel"><div id="grid"></div></div>
+  <div id="bar">
+    <button class="bbtn" id="btnPrev" aria-label="Предыдущий месяц"><svg class="chev" viewBox="0 0 24 24"><polyline points="6,15 12,9 18,15"/></svg></button>
+    <button class="bbtn" id="btnNext" aria-label="Следующий месяц"><svg class="chev" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg></button>
+    <button id="datePill"></button>
+    <button class="bbtn" id="btnAdd" aria-label="Новый трекер" style="font-size:26px;font-weight:300">+</button>
+    <button class="bbtn" id="btnSettings" aria-label="Настройки" style="letter-spacing:2px">···</button>
+  </div>
+</div>
+
+<div id="overlay"></div>
+
+<!-- Cell edit sheet -->
+<div class="sheet" id="cellSheet">
+  <div class="sheet-head">
+    <div>
+      <div class="sheet-sub" id="csDate"></div>
+      <div class="sheet-title" id="csTitle"></div>
+    </div>
+    <button class="xbtn" data-close>✕</button>
+  </div>
+  <div id="csBody"></div>
+</div>
+
+<!-- Day sheet -->
+<div class="sheet" id="daySheet">
+  <div id="daySwipe">
+    <div class="dhead">
+      <div class="dname" id="dsName"></div>
+      <div style="display:flex;align-items:flex-start;gap:14px">
+        <div class="dbadge"><div class="dd" id="dsDD"></div><div class="mm" id="dsMM"></div></div>
+        <button class="xbtn" data-close>✕</button>
+      </div>
+    </div>
+    <div id="dayList"></div>
+  </div>
+</div>
+
+<!-- New / edit tracker -->
+<div class="sheet" id="trackerSheet">
+  <div class="sheet-head">
+    <div class="sheet-title" id="tsTitle">Новый трекер</div>
+    <button class="xbtn" data-close>✕</button>
+  </div>
+  <div class="field">
+    <input class="finput" id="tName" placeholder="Название (напр. Тренировка)" maxlength="30">
+  </div>
+  <div class="field">
+    <div class="flabel">Символ</div>
+    <input class="finput mono" id="tSymbol" placeholder="ТРЕН" maxlength="5" style="text-transform:uppercase">
+    <div class="fhint">Короткое имя для колонки в календаре. Максимум 5 символов.</div>
+  </div>
+  <div class="field">
+    <div class="flabel">Тип</div>
+    <div class="chips" id="tType"></div>
+  </div>
+  <div class="field" id="tUnitField" style="display:none">
+    <div class="flabel">Единица</div>
+    <select class="finput" id="tUnit"></select>
+  </div>
+  <button class="primary" id="tCreate">СОЗДАТЬ</button>
+</div>
+
+<!-- Settings -->
+<div class="sheet" id="settingsSheet">
+  <div class="sheet-head">
+    <div class="sheet-title">Настройки</div>
+    <button class="xbtn" data-close>✕</button>
+  </div>
+  <div class="sgroup">
+    <div class="srow" id="sTrackers">Трекеры <span class="arr">›</span></div>
+    <div class="srow" style="cursor:default">
+      Тёмная тема
+      <label class="switch"><input type="checkbox" id="themeToggle"><span class="slider"></span></label>
+    </div>
+  </div>
+  <div class="sgroup">
+    <div class="srow" id="sExport">Экспорт данных <span class="arr">↓</span></div>
+  </div>
+  <div class="logo">
+    <div class="mark">1Q84</div>
+    <div class="by">HABIT TRACKER</div>
+  </div>
+</div>
+
+<!-- Trackers list -->
+<div class="sheet" id="trackersSheet">
+  <div class="sheet-head">
+    <div class="sheet-title">Трекеры</div>
+    <div style="display:flex;gap:10px">
+      <button class="xbtn" id="tlAdd">+</button>
+      <button class="xbtn" data-close>✕</button>
+    </div>
+  </div>
+  <div id="trackersList"></div>
+  <div class="dragHint">↑↓ — изменить порядок · нажми для статистики</div>
+</div>
+
+<!-- Tracker detail -->
+<div id="detail">
+  <button class="xbtn" id="detBack">‹</button>
+  <h2 id="detName"></h2>
+  <div class="meta">
+    <div class="mrow"><span class="mk">Символ</span><span class="mv" id="detSymbol"></span></div>
+    <div class="mrow"><span class="mk">Тип</span><span class="mv tag" id="detType"></span></div>
+    <div class="mrow"><span class="mk">Создан</span><span class="mv" id="detCreated"></span></div>
+  </div>
+  <div class="tabs" id="detTabs"></div>
+  <div class="statcard">
+    <div class="sk">ЗАПИСЕЙ</div>
+    <div class="sv" id="detCount">0</div>
+  </div>
+  <div class="h3">История</div>
+  <div id="heatwrap"><div id="heat"></div><div id="heatMonths"></div></div>
+  <div class="entryhead"><div class="h3" style="margin:0" id="detMonthName"></div><div class="cnt" id="detMonthCount"></div></div>
+  <div id="detEntries"></div>
+  <div class="detbtns">
+    <button id="btnEdit">РЕДАКТИРОВАТЬ</button>
+    <button id="btnDelete">УДАЛИТЬ</button>
+  </div>
+</div>
+
+
+<script>
+/* ================= State ================= */
+const LS = '1q84_v1';
+const MAX_TRACKERS = 10;
+const MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHS_SHORT = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+const DOWS_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DOW_LETTER = ['S','M','T','W','T','F','S'];
+const TYPES = [
+  {id:'completion', label:'Выполнено'},
+  {id:'time',       label:'Время'},
+  {id:'count',      label:'Число'},
+  {id:'distance',   label:'Дистанция'},
+  {id:'weight',     label:'Вес'},
+  {id:'notes',      label:'Заметка'},
+];
+const UNITS = {
+  distance: ['км','м','мили'],
+  weight:   ['кг','г','фунты'],
+  count:    ['раз','стр','мин'],
+};
+
+let state = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  const today = iso(new Date());
+  return {
+    theme:'dark',
+    trackers:[
+      {id:uid(), name:'Подъем',  symbol:'WAKE',  type:'time',       unit:null, created:today},
+      {id:uid(), name:'Чтение',  symbol:'КНИГА', type:'completion', unit:null, created:today},
+      {id:uid(), name:'Дневник', symbol:'NOTES', type:'completion', unit:null, created:today},
+    ],
+    entries:{}
+  };
+}
+function save(){ try{ localStorage.setItem(LS, JSON.stringify(state)); }catch(e){} }
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function fromISO(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+
+const todayISO = iso(new Date());
+let view = { y:new Date().getFullYear(), m:new Date().getMonth() };
+let selectedDate = todayISO;
+
+/* ================= Theme ================= */
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme', state.theme);
+  document.getElementById('themeToggle').checked = state.theme==='dark';
+}
+document.getElementById('themeToggle').addEventListener('change', e=>{
+  state.theme = e.target.checked ? 'dark' : 'light';
+  save(); applyTheme();
+});
+
+/* ================= Sheets ================= */
+const overlay = document.getElementById('overlay');
+let openSheets = [];
+function openSheet(id){
+  const el = document.getElementById(id);
+  el.classList.add('open');
+  openSheets.push(id);
+  overlay.classList.add('on');
+}
+function closeSheet(id){
+  document.getElementById(id).classList.remove('open');
+  openSheets = openSheets.filter(x=>x!==id);
+  if(!openSheets.length) overlay.classList.remove('on');
+}
+function closeTop(){
+  if(openSheets.length) closeSheet(openSheets[openSheets.length-1]);
+}
+overlay.addEventListener('click', closeTop);
+document.querySelectorAll('[data-close]').forEach(b=>{
+  b.addEventListener('click', ()=> closeSheet(b.closest('.sheet').id));
+});
+
+/* ================= Formatting ================= */
+function fmtValue(t, v){
+  if(v===undefined || v===null) return null;
+  switch(t.type){
+    case 'completion': return '×';
+    case 'notes': return '×';
+    case 'time': return v;
+    default: return v + (t.unit ? ' '+t.unit : '');
+  }
+}
+function fmtCell(t, v){
+  const f = fmtValue(t,v);
+  if(f===null) return '<span class="dot">·</span>';
+  if(f==='×') return '<span class="x">×</span>';
+  return f;
+}
+
+/* ================= Main grid ================= */
+function render(){
+  document.getElementById('hMonth').innerHTML =
+    MONTHS_EN[view.m] + ' <span class="yr">' + view.y + '</span>';
+  const sel = fromISO(selectedDate);
+  document.getElementById('datePill').textContent =
+    sel.getDate() + ' ' + MONTHS_SHORT[sel.getMonth()];
+
+  const grid = document.getElementById('grid');
+  const ts = state.trackers;
+  grid.style.gridTemplateColumns = '92px repeat(' + Math.max(ts.length,1) + ', minmax(96px,1fr))';
+
+  let html = '<div class="gcell ghead corner"></div>';
+  ts.forEach(t=>{
+    html += '<div class="gcell ghead" data-det="'+t.id+'">'+esc(t.symbol||t.name.slice(0,5).toUpperCase())+'</div>';
+  });
+  if(!ts.length) html += '<div class="gcell ghead"></div>';
+
+  const days = new Date(view.y, view.m+1, 0).getDate();
+  for(let d=1; d<=days; d++){
+    const dateISO = view.y+'-'+String(view.m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const dow = new Date(view.y, view.m, d).getDay();
+    const isToday = dateISO===todayISO;
+    const isFuture = dateISO>todayISO;
+    const isSel = dateISO===selectedDate;
+    const isWknd = dow===0||dow===6;
+    const rowCls = (isSel?' rowsel':'') + (isWknd&&!isSel?' rowalt':'') + (isFuture?' future':'');
+    html += '<div class="gcell gday'+rowCls+'" data-date="'+dateISO+'">'
+          + '<span class="num'+(isToday?' today':'')+'">'+String(d).padStart(2,'0')+'</span>'
+          + '<span class="dow">'+DOW_LETTER[dow]+'</span></div>';
+    ts.forEach(t=>{
+      const v = (state.entries[dateISO]||{})[t.id];
+      html += '<div class="gcell gval'+rowCls+'" data-date="'+dateISO+'" data-tid="'+t.id+'">'+fmtCell(t,v)+'</div>';
+    });
+    if(!ts.length) html += '<div class="gcell'+rowCls+'"></div>';
+  }
+  grid.innerHTML = html;
+
+  grid.querySelectorAll('.gval').forEach(c=>{
+    c.addEventListener('click', ()=>{
+      selectedDate = c.dataset.date;
+      render();
+      openCellSheet(c.dataset.tid, c.dataset.date);
+    });
+  });
+  grid.querySelectorAll('.gday').forEach(c=>{
+    c.addEventListener('click', ()=>{ selectedDate = c.dataset.date; render(); });
+  });
+  grid.querySelectorAll('.ghead[data-det]').forEach(c=>{
+    c.addEventListener('click', ()=> openDetail(c.dataset.det));
+  });
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+document.getElementById('btnPrev').addEventListener('click', ()=>{
+  view.m--; if(view.m<0){view.m=11;view.y--;} render();
+});
+document.getElementById('btnNext').addEventListener('click', ()=>{
+  view.m++; if(view.m>11){view.m=0;view.y++;} render();
+});
+document.getElementById('datePill').addEventListener('click', ()=> openDaySheet(selectedDate));
+document.getElementById('btnSettings').addEventListener('click', ()=> openSheet('settingsSheet'));
+document.getElementById('btnAdd').addEventListener('click', ()=> openTrackerForm(null));
+
+/* ================= Cell sheet ================= */
+let cs = { tid:null, date:null };
+function openCellSheet(tid, dateISO){
+  const t = state.trackers.find(x=>x.id===tid); if(!t) return;
+  cs = { tid, date:dateISO };
+  const d = fromISO(dateISO);
+  document.getElementById('csDate').textContent = DOWS_EN[d.getDay()].toUpperCase()+' · '+d.getDate()+' '+MONTHS_SHORT[d.getMonth()];
+  document.getElementById('csTitle').textContent = t.name;
+  const v = (state.entries[dateISO]||{})[t.id];
+  const body = document.getElementById('csBody');
+  const has = v!==undefined;
+  const btnLabel = has ? 'ОБНОВИТЬ' : 'ОТМЕТИТЬ';
+  let inner = '';
+
+  if(t.type==='completion'){
+    inner = '';
+  } else if(t.type==='time'){
+    inner = '<div id="wheel"><div class="wcol" id="wH"></div><div class="wcol" id="wM"></div><div class="wcol" id="wP"></div></div>';
+  } else if(t.type==='notes'){
+    inner = '<div class="valwrap"><textarea id="csInput" placeholder="Текст заметки...">'+(has?esc(v):'')+'</textarea></div>';
+  } else {
+    inner = '<div class="valwrap"><input id="csInput" type="number" inputmode="decimal" step="any" placeholder="0" value="'+(has?v:'')+'"><span class="unit">'+esc(t.unit||'')+'</span></div>';
+  }
+  inner += '<div class="action-row">'
+        + (has ? '<button class="trash" id="csDelete">🗑</button>' : '')
+        + '<button class="primary" id="csSave">'+btnLabel+'</button></div>';
+  body.innerHTML = inner;
+
+  if(t.type==='time') buildWheel(has ? v : null);
+  if(t.type!=='completion' && t.type!=='time'){
+    setTimeout(()=>{ const i=document.getElementById('csInput'); if(i && !has) i.focus(); }, 350);
+  }
+
+  document.getElementById('csSave').addEventListener('click', ()=>{
+    let val;
+    if(t.type==='completion') val = true;
+    else if(t.type==='time') val = readWheel();
+    else if(t.type==='notes'){
+      val = document.getElementById('csInput').value.trim();
+      if(!val){ closeSheet('cellSheet'); return; }
+    } else {
+      const raw = document.getElementById('csInput').value;
+      if(raw==='' || isNaN(parseFloat(raw))){ closeSheet('cellSheet'); return; }
+      val = parseFloat(raw);
+    }
+    if(!state.entries[dateISO]) state.entries[dateISO] = {};
+    state.entries[dateISO][t.id] = val;
+    save(); closeSheet('cellSheet'); render(); refreshDaySheet();
+  });
+  const del = document.getElementById('csDelete');
+  if(del) del.addEventListener('click', ()=>{
+    if(state.entries[dateISO]){ delete state.entries[dateISO][t.id];
+      if(!Object.keys(state.entries[dateISO]).length) delete state.entries[dateISO]; }
+    save(); closeSheet('cellSheet'); render(); refreshDaySheet();
+  });
+  openSheet('cellSheet');
+}
+
+/* ---- time wheel ---- */
+const IH = 46;
+function buildWheel(existing){
+  const wH = document.getElementById('wH'), wM = document.getElementById('wM'), wP = document.getElementById('wP');
+  wH.innerHTML = Array.from({length:12},(_,i)=>'<div class="witem">'+(i+1)+'</div>').join('');
+  wM.innerHTML = Array.from({length:60},(_,i)=>'<div class="witem">'+String(i).padStart(2,'0')+'</div>').join('');
+  wP.innerHTML = '<div class="witem">AM</div><div class="witem">PM</div>';
+
+  let h=8, m=0, pm=0;
+  if(existing){
+    const mt = existing.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if(mt){ h=parseInt(mt[1]); m=parseInt(mt[2]); pm=/pm/i.test(mt[3])?1:0; }
+  } else {
+    const now = new Date();
+    let hh = now.getHours(); pm = hh>=12?1:0; h = hh%12; if(h===0)h=12; m = now.getMinutes();
+  }
+  requestAnimationFrame(()=>{
+    wH.scrollTop = (h-1)*IH; wM.scrollTop = m*IH; wP.scrollTop = pm*IH;
+    [wH,wM,wP].forEach(highlight);
+  });
+  [wH,wM,wP].forEach(col=>{
+    col.addEventListener('scroll', ()=>highlight(col), {passive:true});
+  });
+}
+function highlight(col){
+  const idx = Math.round(col.scrollTop/IH);
+  [...col.children].forEach((el,i)=> el.classList.toggle('sel', i===idx));
+}
+function readWheel(){
+  const gi = col => Math.max(0, Math.min(col.children.length-1, Math.round(col.scrollTop/IH)));
+  const wH = document.getElementById('wH'), wM = document.getElementById('wM'), wP = document.getElementById('wP');
+  const h = gi(wH)+1, m = gi(wM), pm = gi(wP);
+  return h+':'+String(m).padStart(2,'0')+' '+(pm?'PM':'AM');
+}
+
+/* ================= Day sheet ================= */
+let daySheetOpen = false;
+function openDaySheet(dateISO){
+  selectedDate = dateISO;
+  const d = fromISO(dateISO);
+  view = { y:d.getFullYear(), m:d.getMonth() };
+  renderDayList();
+  render();
+  daySheetOpen = true;
+  openSheet('daySheet');
+}
+function refreshDaySheet(){ if(document.getElementById('daySheet').classList.contains('open')) renderDayList(); }
+function renderDayList(){
+  const d = fromISO(selectedDate);
+  document.getElementById('dsName').textContent = DOWS_EN[d.getDay()];
+  document.getElementById('dsDD').textContent = String(d.getDate()).padStart(2,'0');
+  document.getElementById('dsMM').textContent = MONTHS_SHORT[d.getMonth()];
+  const list = document.getElementById('dayList');
+  if(!state.trackers.length){
+    list.innerHTML = '<div class="empty">Нет трекеров. Добавь через «+».</div>'; return;
+  }
+  list.innerHTML = state.trackers.map(t=>{
+    const v = (state.entries[selectedDate]||{})[t.id];
+    const done = v!==undefined;
+    const valTxt = done && t.type!=='completion' && t.type!=='notes' ? esc(fmtValue(t,v)) :
+                   done && t.type==='notes' ? esc(String(v).slice(0,18)) : '';
+    return '<div class="ditem'+(done?' done':'')+'" data-tid="'+t.id+'">'
+         + '<div class="dcheck">'+(done?'✓':'')+'</div>'
+         + '<div class="dlabel">'+esc(t.name)+'</div>'
+         + '<div class="dval">'+valTxt+'</div></div>';
+  }).join('');
+  list.querySelectorAll('.ditem').forEach(el=>{
+    el.addEventListener('click', ()=> openCellSheet(el.dataset.tid, selectedDate));
+  });
+}
+/* swipe navigation */
+(function(){
+  const zone = document.getElementById('daySwipe');
+  let sx=null, sy=null;
+  zone.addEventListener('touchstart', e=>{ sx=e.touches[0].clientX; sy=e.touches[0].clientY; }, {passive:true});
+  zone.addEventListener('touchend', e=>{
+    if(sx===null) return;
+    const dx = e.changedTouches[0].clientX - sx;
+    const dy = e.changedTouches[0].clientY - sy;
+    sx=null;
+    if(Math.abs(dx)>60 && Math.abs(dx)>Math.abs(dy)*1.5){
+      const d = fromISO(selectedDate);
+      d.setDate(d.getDate() + (dx<0 ? 1 : -1));
+      const ni = iso(d);
+      if(ni>todayISO) return;
+      selectedDate = ni;
+      view = { y:d.getFullYear(), m:d.getMonth() };
+      renderDayList(); render();
+    }
+  }, {passive:true});
+})();
+
+/* ================= Tracker form ================= */
+let editingId = null;
+function openTrackerForm(id){
+  editingId = id;
+  const t = id ? state.trackers.find(x=>x.id===id) : null;
+  if(!t && state.trackers.length>=MAX_TRACKERS){
+    alert('Максимум '+MAX_TRACKERS+' трекеров.'); return;
+  }
+  document.getElementById('tsTitle').textContent = t ? 'Редактировать' : 'Новый трекер';
+  document.getElementById('tCreate').textContent = t ? 'СОХРАНИТЬ' : 'СОЗДАТЬ';
+  document.getElementById('tName').value = t ? t.name : '';
+  document.getElementById('tSymbol').value = t ? t.symbol : '';
+  buildTypeChips(t ? t.type : 'completion', t ? t.unit : null);
+  openSheet('trackerSheet');
+}
+function buildTypeChips(selType, selUnit){
+  const box = document.getElementById('tType');
+  box.innerHTML = TYPES.map(tp=>'<button class="chip'+(tp.id===selType?' sel':'')+'" data-type="'+tp.id+'">'+tp.label+'</button>').join('');
+  box.querySelectorAll('.chip').forEach(ch=>{
+    ch.addEventListener('click', ()=>{
+      box.querySelectorAll('.chip').forEach(x=>x.classList.remove('sel'));
+      ch.classList.add('sel');
+      updateUnitField(ch.dataset.type, null);
+    });
+  });
+  updateUnitField(selType, selUnit);
+}
+function updateUnitField(type, selUnit){
+  const f = document.getElementById('tUnitField');
+  const sel = document.getElementById('tUnit');
+  if(UNITS[type]){
+    f.style.display = '';
+    sel.innerHTML = UNITS[type].map(u=>'<option'+(u===selUnit?' selected':'')+'>'+u+'</option>').join('');
+  } else f.style.display = 'none';
+}
+document.getElementById('tCreate').addEventListener('click', ()=>{
+  const name = document.getElementById('tName').value.trim();
+  if(!name){ document.getElementById('tName').focus(); return; }
+  let symbol = document.getElementById('tSymbol').value.trim().toUpperCase().slice(0,5);
+  if(!symbol) symbol = name.slice(0,5).toUpperCase();
+  const type = document.querySelector('#tType .chip.sel').dataset.type;
+  const unit = UNITS[type] ? document.getElementById('tUnit').value : null;
+  if(editingId){
+    const t = state.trackers.find(x=>x.id===editingId);
+    Object.assign(t, {name, symbol, type, unit});
+  } else {
+    state.trackers.push({id:uid(), name, symbol, type, unit, created:todayISO});
+  }
+  save(); closeSheet('trackerSheet'); render(); renderTrackersList();
+  if(editingId && document.getElementById('detail').classList.contains('open')) openDetail(editingId);
+});
+
+/* ================= Settings & trackers list ================= */
+document.getElementById('sTrackers').addEventListener('click', ()=>{
+  renderTrackersList(); openSheet('trackersSheet');
+});
+document.getElementById('tlAdd').addEventListener('click', ()=> openTrackerForm(null));
+document.getElementById('sExport').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '1q84-export-'+todayISO+'.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+function renderTrackersList(){
+  const box = document.getElementById('trackersList');
+  if(!state.trackers.length){
+    box.innerHTML = '<div class="empty">Пусто. Добавь первый трекер.</div>'; return;
+  }
+  box.innerHTML = state.trackers.map((t,i)=>
+    '<div class="titem" data-tid="'+t.id+'">'
+    + '<span class="tname">'+esc(t.name)+'</span>'
+    + '<span class="move">'
+    + '<button class="movebtn" data-mv="-1" data-i="'+i+'">↑</button>'
+    + '<button class="movebtn" data-mv="1" data-i="'+i+'">↓</button>'
+    + '</span></div>').join('');
+  box.querySelectorAll('.titem').forEach(el=>{
+    el.addEventListener('click', e=>{
+      if(e.target.classList.contains('movebtn')) return;
+      openDetail(el.dataset.tid);
+    });
+  });
+  box.querySelectorAll('.movebtn').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const i = +b.dataset.i, j = i + (+b.dataset.mv);
+      if(j<0 || j>=state.trackers.length) return;
+      [state.trackers[i], state.trackers[j]] = [state.trackers[j], state.trackers[i]];
+      save(); renderTrackersList(); render();
+    });
+  });
+}
+
+/* ================= Detail / stats ================= */
+let detId = null, detPeriod = 'week';
+const PERIODS = [['week','Неделя'],['month','Месяц'],['year','Год'],['all','Всё время']];
+function openDetail(id){
+  detId = id;
+  const t = state.trackers.find(x=>x.id===id); if(!t) return;
+  document.getElementById('detName').textContent = t.name;
+  document.getElementById('detSymbol').textContent = t.symbol;
+  document.getElementById('detType').textContent = (TYPES.find(x=>x.id===t.type)||{}).label.toUpperCase();
+  const cd = fromISO(t.created);
+  document.getElementById('detCreated').textContent =
+    String(cd.getDate()).padStart(2,'0')+' '+MONTHS_SHORT[cd.getMonth()]+', '+cd.getFullYear();
+  renderDetTabs(); renderDetStats(t); renderHeat(t); renderDetEntries(t);
+  document.getElementById('detail').classList.add('open');
+}
+document.getElementById('detBack').addEventListener('click', ()=>{
+  document.getElementById('detail').classList.remove('open');
+});
+function renderDetTabs(){
+  const box = document.getElementById('detTabs');
+  box.innerHTML = PERIODS.map(([id,l])=>'<button class="tab'+(id===detPeriod?' sel':'')+'" data-p="'+id+'">'+l+'</button>').join('');
+  box.querySelectorAll('.tab').forEach(b=>b.addEventListener('click', ()=>{
+    detPeriod = b.dataset.p;
+    const t = state.trackers.find(x=>x.id===detId);
+    renderDetTabs(); renderDetStats(t);
+  }));
+}
+function trackerDates(t){
+  return Object.keys(state.entries).filter(d=> state.entries[d][t.id]!==undefined).sort();
+}
+function renderDetStats(t){
+  const now = new Date();
+  let from = null;
+  if(detPeriod==='week'){ from = new Date(now); const wd=(now.getDay()+6)%7; from.setDate(now.getDate()-wd); }
+  else if(detPeriod==='month'){ from = new Date(now.getFullYear(), now.getMonth(), 1); }
+  else if(detPeriod==='year'){ from = new Date(now.getFullYear(), 0, 1); }
+  const fi = from ? iso(from) : '';
+  const n = trackerDates(t).filter(d=> d>=fi && d<=todayISO).length;
+  document.getElementById('detCount').textContent = n;
+}
+function renderHeat(t){
+  const heat = document.getElementById('heat');
+  const monthsBar = document.getElementById('heatMonths');
+  const dates = new Set(trackerDates(t));
+  const end = new Date();
+  const start = new Date(end); start.setDate(end.getDate()-139); // 20 weeks
+  const wd=(start.getDay()+6)%7; start.setDate(start.getDate()-wd); // align Monday
+  let cells='', labels=[], cur=new Date(start), col=0;
+  let lastMonth=-1;
+  while(cur<=end || (cur.getDay()+6)%7!==0){
+    const di = iso(cur);
+    const on = dates.has(di) && cur<=end;
+    cells += '<div class="hcell'+(on?' on':'')+'"></div>';
+    if((cur.getDay()+6)%7===0){
+      if(cur.getMonth()!==lastMonth && cur<=end){ labels.push([col, MONTHS_SHORT[cur.getMonth()]]); lastMonth=cur.getMonth(); }
+      col++;
+    }
+    cur.setDate(cur.getDate()+1);
+    if(col>21) break;
+  }
+  heat.innerHTML = cells;
+  monthsBar.innerHTML = labels.slice(1).map(([c,l],i,arr)=>{
+    const next = arr[i+1] ? arr[i+1][0] : col;
+    return '<span style="width:'+((next-c)*18)+'px">'+l+'</span>';
+  }).join('');
+}
+function renderDetEntries(t){
+  const now = new Date();
+  document.getElementById('detMonthName').textContent = MONTHS_EN[now.getMonth()];
+  const mi = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const list = trackerDates(t).filter(d=>d.startsWith(mi)).reverse();
+  document.getElementById('detMonthCount').textContent = list.length+' '+plural(list.length,'ЗАПИСЬ','ЗАПИСИ','ЗАПИСЕЙ');
+  const box = document.getElementById('detEntries');
+  if(!list.length){ box.innerHTML = '<div class="empty">Записей в этом месяце нет.</div>'; return; }
+  box.innerHTML = list.map(d=>{
+    const v = state.entries[d][t.id];
+    const dt = fromISO(d);
+    const label = (t.type==='completion'||t.type==='notes') ? '✓' : esc(fmtValue(t,v));
+    return '<div class="erow"><span>'+label+'</span>'
+         + '<span class="ed">'+DOWS_EN[dt.getDay()].slice(0,3).toUpperCase()+' '+String(dt.getDate()).padStart(2,'0')+' '+MONTHS_SHORT[dt.getMonth()]+'</span></div>';
+  }).join('');
+}
+function plural(n,a,b,c){ const m=n%10, h=n%100; if(m===1&&h!==11)return a; if(m>=2&&m<=4&&(h<10||h>=20))return b; return c; }
+
+document.getElementById('btnEdit').addEventListener('click', ()=> openTrackerForm(detId));
+document.getElementById('btnDelete').addEventListener('click', ()=>{
+  const t = state.trackers.find(x=>x.id===detId);
+  if(!confirm('Удалить трекер «'+t.name+'» и все его записи?')) return;
+  state.trackers = state.trackers.filter(x=>x.id!==detId);
+  Object.keys(state.entries).forEach(d=>{
+    delete state.entries[d][detId];
+    if(!Object.keys(state.entries[d]).length) delete state.entries[d];
+  });
+  save();
+  document.getElementById('detail').classList.remove('open');
+  renderTrackersList(); render();
+});
+
+/* symbol input uppercase */
+document.getElementById('tSymbol').addEventListener('input', e=>{
+  e.target.value = e.target.value.toUpperCase();
+});
+
+/* ================= Init ================= */
+applyTheme();
+render();
+/* scroll grid so today is visible */
+requestAnimationFrame(()=>{
+  const t = document.querySelector('.num.today');
+  const panel = document.getElementById('gridPanel');
+  if(t && panel){
+    const cell = t.closest('.gcell');
+    panel.scrollTop = Math.max(0, cell.offsetTop - panel.clientHeight/2 + 26);
+  }
+});
+</script>
+
+</body>
+</html>
