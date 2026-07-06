@@ -195,6 +195,15 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
 .summary .delta{font-size:14px;font-weight:700;margin-top:6px}
 .summary .delta.up{color:var(--ok)}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+
+/* ---- журнал и редактирование тренировок ---- */
+.cal-cell.done{cursor:pointer}
+.jrow{display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer}
+.jrow:active{opacity:.65}
+.modal-back{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:60;padding:14px;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+.modal-back.show{display:flex}
+.modal-card{background:var(--card-2);border-radius:20px;padding:20px;width:100%;max-width:480px;max-height:80dvh;overflow-y:auto;border:1px solid var(--line)}
+.modal-card input{width:100%;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--ink);font-family:var(--sans);font-size:16px;margin-top:6px;box-sizing:border-box}
 </style>
 </head>
 <body>
@@ -231,6 +240,8 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
     <div class="meta" id="next-meta"></div>
     <button onclick="go('workout')">Открыть тренировку</button>
   </div>
+
+  <div id="home-last"></div>
 
   <div class="row2">
     <div class="card light">
@@ -350,6 +361,10 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
     программа
   </button>
 </nav>
+
+<div class="modal-back" id="modal-back" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card" id="modal-card"></div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -504,7 +519,7 @@ const AOMAME = [
 const UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || 'local';
 const SKEY = 'tp1703_' + UID;
 const store = {
-  data: { weights:[], history:[], workWeights:{}, week:1, workout:1, benchRM:100, program:'tengo', aWorkout:1, aWeights:{}, exHist:{}, rmHist:[], theme:'light' },
+  data: { weights:[], history:[], workWeights:{}, week:1, workout:1, benchRM:100, program:'tengo', aWorkout:1, aWeights:{}, exHist:{}, rmHist:[], theme:'light', session:null },
   load(){
     const local = localStorage.getItem(SKEY) || (UID==='local' ? localStorage.getItem('tp1703') : null);
     if (local) { try{ Object.assign(this.data, JSON.parse(local)); }catch(e){} }
@@ -531,7 +546,7 @@ const store = {
 const $ = s => document.querySelector(s);
 const fmt = n => n.toLocaleString('ru-RU');
 const round25 = kg => Math.round(kg/2.5)*2.5;
-const todayISO = () => new Date().toISOString().slice(0,10);
+const todayISO = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 const MONTHS = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
 const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
@@ -733,6 +748,17 @@ function renderHome(){
       $('#next-meta').textContent = `неделя ${w} из 10 · ${setsForWeek(w)} подхода в упражнениях · отдых строго 2 мин`;
     }
   }
+  const H = store.data.history;
+  $('#home-last').innerHTML = H.length ? `
+    <div class="card light jrow" style="margin-bottom:14px" onclick="openHistory(${H.length-1})">
+      <div>
+        <div class="label">последняя тренировка</div>
+        <b style="font-size:15px">${describeH(H[H.length-1])}</b>
+        <div class="hint" style="margin-top:3px">${fmtDateRu(H[H.length-1].date)} · ${fmt(H[H.length-1].tonnage)} кг</div>
+      </div>
+      <span style="font-size:22px;color:var(--muted)">›</span>
+    </div>` : '';
+
   renderCalendar();
 }
 
@@ -757,7 +783,8 @@ function renderCalendar(){
     const cls = ['cal-cell'];
     if (iso===today) cls.push('today');
     if (doneDates.has(iso)) cls.push('done');
-    html += `<div class="${cls.join(' ')}">${d}${weightDates.has(iso)?'<span class="w"></span>':''}</div>`;
+    const click = doneDates.has(iso) ? ` onclick="openDay('${iso}')"` : '';
+    html += `<div class="${cls.join(' ')}"${click}>${d}${weightDates.has(iso)?'<span class="w"></span>':''}</div>`;
   }
   $('#cal-grid').innerHTML = html;
 }
@@ -894,7 +921,7 @@ function renderWorkout(){
         <div class="ex-controls">
           <input type="number" inputmode="decimal" step="0.5" placeholder="кг" value="${saved}"
                  onchange="setWW('${ex.n.replace(/'/g,"\\'")}', this.value)">
-          ${isFail?`<input type="number" inputmode="numeric" placeholder="повт." style="max-width:90px" id="fail-reps-${i}">`:''}
+          ${isFail?`<input type="number" inputmode="numeric" placeholder="повт." style="max-width:90px" id="fail-reps-${i}" oninput="saveSession()">`:''}
         </div>
         ${renderSets(i, sets)}
       </div>`;
@@ -903,6 +930,7 @@ function renderWorkout(){
   html += `<button class="btn" style="margin-top:8px" onclick="finishWorkout()">Завершить тренировку</button>
            <div class="hint" style="text-align:center;margin-top:10px">дата, тоннаж и отметка в календаре сохранятся автоматически</div>`;
   body.innerHTML = html;
+  restoreSession();
 }
 
 function renderSets(exIdx, count, rest){
@@ -918,6 +946,7 @@ function toggleSet(e,s,btn,rest){
   if (!woStartTs) woStartTs = Date.now();
   if (sessionChecks[e][s]) startRest(rest||120); else cancelRest(true);
   updateProgress();
+  saveSession();
   haptic();
 }
 function setWW(name, val){
@@ -965,11 +994,14 @@ function showSummary(tonnage, workoutNum, prev, isRecord){
     ${delta?`<div style="margin-top:10px">${delta}</div>`:''}
     ${mins>0?`<div class="hint" style="margin-top:6px">длительность ~${mins} мин</div>`:''}
     <button class="btn" style="margin-top:22px" onclick="go('home')">На главную</button>
+    <button class="btn ghost" style="margin-top:10px" id="undo-btn" onclick="undoFinish()">Отменить завершение · 10</button>
   </div>`;
+  startUndoCountdown();
   window.scrollTo(0,0);
 }
 
 function finishWorkout(){
+  takeUndoSnap();
   const v = woView ?? {week:store.data.week, workout:store.data.workout};
   const w = v.week, n = v.workout;
   const key = cycleForWeek(w), cyc = CYCLES[key], sets = setsForWeek(w);
@@ -997,6 +1029,7 @@ function finishWorkout(){
   // продвижение по циклу
   if (n<3) store.data.workout = n+1;
   else { store.data.workout = 1; store.data.week = w+1; }
+  store.data.session = null;
   store.save();
   haptic('ok');
   woView = null;
@@ -1041,12 +1074,14 @@ function renderAomameWorkout(){
   <button class="btn" style="margin-top:8px" onclick="finishAomame()">Завершить тренировку</button>
   <div class="hint" style="text-align:center;margin-top:10px">дата, тоннаж и отметка в календаре сохранятся автоматически</div>`;
   $('#wo-body').innerHTML = html;
+  restoreSession();
 }
 function setAW(name, val){
   const v = parseFloat(String(val).replace(',','.'));
   if (v>=0) { store.data.aWeights[name]=v; store.save(); }
 }
 function finishAomame(){
+  takeUndoSnap();
   const n = aView ?? store.data.aWorkout;
   const wo = AOMAME[n-1];
   let tonnage = 0;
@@ -1066,15 +1101,24 @@ function finishAomame(){
   store.data.history.push({date:todayISO(), prog:'aomame', workout:n, tonnage});
   if (store.data.history.length>300) store.data.history = store.data.history.slice(-300);
   store.data.aWorkout = n<3 ? n+1 : 1;
+  store.data.session = null;
   store.save();
   haptic('ok');
   aView = null;
   showSummary(tonnage, n, prev, best!==null && tonnage>best);
 }
 
+let maxArm = 0;
 function finishMax(){
-  const v = parseFloat($('#new-rm').value.replace(',','.'));
+  const v = parseFloat(($('#new-rm').value||'').replace(',','.'));
   if (!v || v<20){ toast('Введи новый максимум'); return; }
+  if (Date.now()-maxArm > 4000){
+    maxArm = Date.now();
+    toast(`Ещё раз — зафиксирует 1ПМ ${v} кг и перезапустит цикл`);
+    haptic();
+    return;
+  }
+  maxArm = 0;
   store.data.benchRM = v;
   store.data.rmHist.push({d:todayISO(), kg:v});
   store.data.history.push({date:todayISO(), week:10, workout:1, tonnage:Math.round(v)});
@@ -1119,7 +1163,7 @@ function renderProgressList(items){
 }
 function renderProgressT(body){
   const rm = store.data.rmHist;
-  let html = `<div class="card light">
+  let html = journalCard() + `<div class="card light">
     <div class="label">жим лёжа · история 1ПМ</div>`;
   if (rm.length){
     const kgs = rm.map(x=>x.kg);
@@ -1151,7 +1195,7 @@ function renderProgram(){
   if (store.data.program==='aomame'){
     $('#prog-seg').style.display = 'none';
     $('#tengo-pos').style.display = 'none';
-    let html = `<div class="hint" style="margin-bottom:12px">ротация Т1 → Т2 → Т3 → Т1 · 4 круга в каждом блоке · веса сохраняются и подставляются в тренировку</div>`;
+    let html = `<div class="hint" style="margin-bottom:12px">ротация Т1 → Т2 → Т3 → Т1 · 4 круга в каждом блоке · веса сохраняются и подставляются в тренировку</div>` + journalCard();
     AOMAME.forEach((wo,wi)=>{
       html += `<div class="card light"><div class="label">тренировка ${wi+1}${wi+1===store.data.aWorkout?' · следующая':''}</div><table>
         <tr><th>упражнение</th><th style="text-align:right">повт.</th><th style="text-align:right">кг</th></tr>`;
@@ -1268,6 +1312,159 @@ function savePosition(){
 function saveAPosition(){
   store.data.aWorkout = parseInt($('#a-set-workout').value);
   store.save(); haptic('ok'); toast('Позиция сохранена');
+}
+
+/* ============ АВТОСЕЙВ ТЕКУЩЕЙ СЕССИИ ============
+   Telegram выгружает WebView при сворачивании — прогресс держим в store.data.session
+   (уходит и в localStorage, и в CloudStorage) и восстанавливаем при перерисовке. */
+function sessKey(){
+  if (store.data.program==='aomame') return 'a:' + (aView ?? store.data.aWorkout);
+  const v = woView ?? {week:store.data.week, workout:store.data.workout};
+  return 't:' + v.week + ':' + v.workout;
+}
+function saveSession(){
+  const checks = {};
+  for (const k in sessionChecks) checks[k] = sessionChecks[k].slice();
+  const failReps = {};
+  document.querySelectorAll('[id^="fail-reps-"]').forEach(el=>{ if(el.value!=='') failReps[el.id.slice(10)] = el.value; });
+  store.data.session = { key:sessKey(), checks, failReps, startTs:woStartTs,
+    restEnd: restEnd>Date.now() ? restEnd : 0, updated:Date.now() };
+  store.save();
+}
+function restoreSession(){
+  const s = store.data.session;
+  if (!s || s.key!==sessKey()) return;
+  if (Date.now()-(s.updated||0) > 12*3600*1000){ store.data.session=null; store.save(); return; } // старше 12 ч — не тащим
+  const groups = document.querySelectorAll('#wo-body .sets');
+  let any = false;
+  for (const k in s.checks){
+    const g = groups[k];
+    if (!g || !sessionChecks[k]) continue;
+    s.checks[k].forEach((on,idx)=>{
+      if (on && idx < sessionChecks[k].length){
+        sessionChecks[k][idx] = true; any = true;
+        const b = g.children[idx]; if (b) b.classList.add('on');
+      }
+    });
+  }
+  for (const idx in (s.failReps||{})){
+    const el = document.getElementById('fail-reps-'+idx);
+    if (el) el.value = s.failReps[idx];
+  }
+  woStartTs = s.startTs || 0;
+  if (s.restEnd && s.restEnd > Date.now()) startRest(Math.max(1, Math.ceil((s.restEnd-Date.now())/1000)));
+  if (any) updateProgress();
+}
+
+/* ============ ОТМЕНА ЗАВЕРШЕНИЯ (10 секунд) ============ */
+let undoSnap = null, undoTimer = null, undoLeft = 0;
+function takeUndoSnap(){
+  undoSnap = {
+    histLen: store.data.history.length,
+    week: store.data.week, workout: store.data.workout, aWorkout: store.data.aWorkout,
+    exHist: JSON.stringify(store.data.exHist),
+    session: JSON.stringify(store.data.session || null)
+  };
+}
+function startUndoCountdown(){
+  if (!undoSnap) return;
+  undoLeft = 10;
+  clearInterval(undoTimer);
+  undoTimer = setInterval(()=>{
+    const b = $('#undo-btn');
+    if (!b){ clearInterval(undoTimer); return; }
+    undoLeft--;
+    if (undoLeft<=0){ b.style.display='none'; undoSnap=null; clearInterval(undoTimer); return; }
+    b.textContent = 'Отменить завершение · ' + undoLeft;
+  }, 1000);
+}
+function undoFinish(){
+  if (!undoSnap) return;
+  clearInterval(undoTimer);
+  store.data.history.length = undoSnap.histLen;
+  store.data.week = undoSnap.week;
+  store.data.workout = undoSnap.workout;
+  store.data.aWorkout = undoSnap.aWorkout;
+  store.data.exHist = JSON.parse(undoSnap.exHist);
+  store.data.session = JSON.parse(undoSnap.session);
+  undoSnap = null;
+  store.save();
+  haptic('ok');
+  toast('Завершение отменено — продолжаем');
+  go('workout');
+}
+
+/* ============ ЖУРНАЛ ТРЕНИРОВОК: ПРОСМОТР И РЕДАКТИРОВАНИЕ ============ */
+function fmtDateRu(iso){ const [y,m,d]=iso.split('-').map(Number); return `${d} ${MONTHS_GEN[m-1]} ${y}`; }
+function describeH(h){
+  if (h.week===10) return 'Проходка · новый 1ПМ';
+  return (h.prog==='aomame') ? `Aomame · тренировка ${h.workout}` : `Tengo · неделя ${h.week} · тренировка ${h.workout}`;
+}
+function openModal(html){ $('#modal-card').innerHTML = html; $('#modal-back').classList.add('show'); }
+function closeModal(){ $('#modal-back').classList.remove('show'); histDelArm = 0; }
+function journalCard(){
+  const H = store.data.history;
+  if (!H.length) return `<div class="card light"><div class="label">журнал тренировок</div>
+    <div class="hint">завершённые тренировки появятся здесь — каждую можно будет открыть и отредактировать</div></div>`;
+  const rows = H.map((h,i)=>({h,i})).reverse().slice(0,20).map(({h,i})=>
+    `<div class="log-item jrow" onclick="openHistory(${i})">
+      <div><b style="font-size:14px">${describeH(h)}</b><div class="hint" style="margin-top:2px">${fmtDateRu(h.date)}</div></div>
+      <span class="nw" style="color:var(--muted)">${fmt(h.tonnage)} кг ›</span>
+    </div>`).join('');
+  return `<div class="card light"><div class="label">журнал тренировок · нажми, чтобы открыть</div>${rows}
+    ${H.length>20?`<div class="hint" style="margin-top:8px">показаны последние 20 из ${H.length}</div>`:''}</div>`;
+}
+function openDay(iso){
+  const list = store.data.history.map((h,i)=>({h,i})).filter(x=>x.h.date===iso);
+  if (!list.length) return;
+  haptic();
+  if (list.length===1){ openHistory(list[0].i); return; }
+  openModal(`<div class="label">${fmtDateRu(iso)}</div>
+    ${list.map(({h,i})=>`<div class="log-item jrow" onclick="openHistory(${i})">
+      <b style="font-size:14px">${describeH(h)}</b><span class="nw" style="color:var(--muted)">${fmt(h.tonnage)} кг ›</span></div>`).join('')}
+    <button class="btn ghost" style="margin-top:14px" onclick="closeModal()">Закрыть</button>`);
+}
+let histDelArm = 0;
+function openHistory(i){
+  const h = store.data.history[i]; if (!h) return;
+  histDelArm = 0;
+  openModal(`
+    <div class="label">${describeH(h)}</div>
+    <div class="label" style="margin-top:16px">дата</div>
+    <input type="date" id="eh-date" value="${h.date}" max="${todayISO()}">
+    <div class="label" style="margin-top:12px">тоннаж, кг</div>
+    <input type="number" id="eh-ton" inputmode="numeric" value="${h.tonnage}">
+    ${h.week===10?'<div class="hint" style="margin-top:8px">это запись проходки в журнале; сам 1ПМ меняется на неделе 10</div>':''}
+    <button class="btn" style="margin-top:18px" onclick="saveHistoryEdit(${i})">Сохранить</button>
+    <button class="btn ghost" style="margin-top:10px" id="eh-del" onclick="deleteHistory(${i})">Удалить запись</button>
+    <button class="btn ghost" style="margin-top:10px" onclick="closeModal()">Закрыть</button>`);
+}
+function afterHistoryChange(){
+  store.data.history.sort((a,b)=>a.date.localeCompare(b.date));
+  store.save();
+  renderHome();
+  if ($('#scr-program').classList.contains('active')) renderProgram();
+}
+function saveHistoryEdit(i){
+  const h = store.data.history[i]; if (!h) return;
+  const d = $('#eh-date').value;
+  const t = Math.round(parseFloat(String($('#eh-ton').value||'').replace(',','.')));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)){ toast('Укажи дату'); return; }
+  if (!(t>=0)){ toast('Укажи тоннаж'); return; }
+  h.date = d; h.tonnage = t;
+  afterHistoryChange();
+  closeModal(); haptic('ok'); toast('Тренировка обновлена');
+}
+function deleteHistory(i){
+  if (Date.now()-histDelArm > 4000){
+    histDelArm = Date.now();
+    const b = $('#eh-del'); if (b) b.textContent = 'Точно удалить? Нажми ещё раз';
+    haptic();
+    return;
+  }
+  store.data.history.splice(i,1);
+  afterHistoryChange();
+  closeModal(); haptic('ok'); toast('Запись удалена');
 }
 
 /* ============ СТАРТ ============ */
