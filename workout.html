@@ -79,9 +79,11 @@ h1{font-family:var(--serif);font-weight:400;font-size:34px;line-height:1.1;lette
 .cal-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:13px;border-radius:50%;position:relative;color:var(--ink)}
 .cal-cell.dim{color:var(--line)}
 .cal-cell.today{outline:1.5px solid var(--ink)}
-.cal-cell.done{background:var(--accent);color:var(--on-accent);font-weight:600}
+.cal-cell.done{background:var(--accent);color:var(--on-accent);font-weight:600;cursor:pointer}
 .cal-cell .w{position:absolute;bottom:1px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--ok)}
-.cal-cell .c{position:absolute;top:1px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;border:1.5px solid var(--ok);box-sizing:border-box}
+.cal-cell.cardio{box-shadow:inset 0 0 0 1.5px var(--ok)}
+.cal-cell.done.cardio{box-shadow:0 0 0 1.5px var(--bg),0 0 0 3px var(--ok)}
+.cal-cell.fut{color:var(--muted);opacity:.55}
 .goalbar{height:8px;border-radius:99px;background:var(--card);overflow:hidden;margin-top:10px}
 .goalbar i{display:block;height:100%;background:var(--ok);border-radius:99px;transition:width .3s}
 
@@ -199,6 +201,25 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
 .summary .delta.up{color:var(--ok)}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 
+/* ---- микроанимации ---- */
+.btn,.seg button,.cal-nav button,.switch button{transition:transform .12s ease,opacity .12s ease}
+.btn:active,.cal-nav button:active{transform:scale(.965)}
+.set-dot{transition:background .18s,border-color .18s,color .18s,transform .12s}
+.set-dot:active{transform:scale(.9)}
+.set-dot.on{animation:setpop .22s ease}
+@keyframes setpop{0%{transform:scale(.85)}60%{transform:scale(1.1)}100%{transform:scale(1)}}
+#wo-ring{transition:stroke-dashoffset .45s ease}
+.modal-back.show .modal-card{animation:sheetUp .26s cubic-bezier(.32,.72,.3,1)}
+@keyframes sheetUp{from{transform:translateY(28px);opacity:.55}to{transform:none;opacity:1}}
+#rest-pill{animation:pillpulse 2.4s ease-in-out infinite}
+@keyframes pillpulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.035)}}
+.cal-cell.done{transition:transform .12s}
+.cal-cell.done:active{transform:scale(.9)}
+@media (prefers-reduced-motion:reduce){
+  .screen.active,.set-dot.on,.modal-back.show .modal-card,#rest-pill{animation:none}
+  #wo-ring,.goalbar i{transition:none}
+}
+
 /* ---- журнал и редактирование тренировок ---- */
 .dchip{font-weight:700;font-size:12px}
 .dchip.up{color:var(--ok)}
@@ -277,7 +298,7 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
       </div>
     </div>
     <div class="cal-grid" id="cal-grid"></div>
-    <div class="hint">заполненный день — тренировка · точка снизу — вес · кольцо сверху — кардио</div>
+    <div class="hint">заполненный день — тренировка, нажми для сводки · кольцо — кардио · точка — вес · тап по названию месяца вернёт к текущему</div>
   </div>
 </section>
 
@@ -605,10 +626,15 @@ const store = {
   },
   save(){
     this.data.savedAt = Date.now();
-    const json = JSON.stringify(this.data);
-    localStorage.setItem(SKEY, json);
-    if (tg && tg.CloudStorage && tg.CloudStorage.setItem) {
-      try{ tg.CloudStorage.setItem('tp1703', json, ()=>{}); }catch(e){}
+    localStorage.setItem(SKEY, JSON.stringify(this.data));
+    /* облако — с задержкой, чтобы не дёргать CloudStorage на каждый тап */
+    clearTimeout(this._cloudT);
+    this._cloudT = setTimeout(()=>this.flushCloud(), 1200);
+  },
+  flushCloud(){
+    clearTimeout(this._cloudT);
+    if (tg && tg.CloudStorage && tg.CloudStorage.setItem){
+      try{ tg.CloudStorage.setItem('tp1703', JSON.stringify(this.data), ()=>{}); }catch(e){}
     }
   }
 };
@@ -657,6 +683,11 @@ function cancelRest(silent){
   $('#rest-pill').style.display = 'none';
   if (silent!==true) haptic();
 }
+
+/* при сворачивании приложения — немедленно доливаем в облако */
+document.addEventListener('visibilitychange', ()=>{
+  if (document.visibilityState==='hidden') store.flushCloud();
+});
 
 /* ---- клавиатура: Enter/Готово и тап мимо поля закрывают её ---- */
 document.addEventListener('keydown', e=>{
@@ -713,9 +744,18 @@ function sparkline(arr){
 /* ---- экспорт ---- */
 function exportData(){
   const json = JSON.stringify(store.data, null, 2);
-  if (navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(json).then(()=>toast('Данные скопированы в буфер'), ()=>toast('Не удалось скопировать'));
-  }
+  const ok = ()=>{ toast('Данные скопированы в буфер'); haptic('ok'); };
+  const fb = ()=>{
+    const ta = document.createElement('textarea');
+    ta.value = json; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy') ? ok() : toast('Не удалось скопировать'); }
+    catch(e){ toast('Не удалось скопировать'); }
+    ta.remove();
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(json).then(ok, fb);
+  else fb();
   if (!tg){
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([json], {type:'application/json'}));
@@ -802,7 +842,7 @@ function renderHome(){
   }
 
   const weekAgo = Date.now() - 7*864e5;
-  const vol = store.data.history.filter(h=>new Date(h.date).getTime()>=weekAgo).reduce((s,h)=>s+h.tonnage,0);
+  const vol = store.data.history.filter(h=>new Date(h.date+'T12:00').getTime()>=weekAgo).reduce((s,h)=>s+h.tonnage,0);
   $('#home-volume').innerHTML = `${fmt(vol)}<small>кг</small>`;
 
   const now = new Date();
@@ -858,15 +898,20 @@ function renderHome(){
   renderCalendar();
 }
 
+function calToday(){ calCursor = new Date(); haptic(); renderCalendar(); }
 function renderCalendar(){
   const y = calCursor.getFullYear(), m = calCursor.getMonth();
   const mKey = `${y}-${String(m+1).padStart(2,'0')}`;
   const monthVol = store.data.history
     .filter(h=>h.date.startsWith(mKey))
     .reduce((s,h)=>s+h.tonnage,0);
-  $('#cal-title').innerHTML = `${MONTHS[m]} ${y}` +
+  const title = $('#cal-title');
+  title.innerHTML = `${MONTHS[m]} ${y}` +
     (monthVol>0 ? ` <span style="font-family:var(--serif);font-weight:400;color:var(--muted)">· ${fmt(monthVol)} кг</span>` : '');
-  const doneDates = new Set(store.data.history.map(h=>h.date));
+  title.style.cursor = 'pointer';
+  title.onclick = calToday;
+
+  const doneDates   = new Set(store.data.history.map(h=>h.date));
   const weightDates = new Set(store.data.weights.map(w=>w.date));
   const cardioDates = new Set((store.data.cardio||[]).map(c=>c.date));
   const first = new Date(y,m,1);
@@ -880,13 +925,15 @@ function renderCalendar(){
     const cls = ['cal-cell'];
     if (iso===today) cls.push('today');
     if (doneDates.has(iso)) cls.push('done');
+    if (cardioDates.has(iso)) cls.push('cardio');
+    if (iso>today) cls.push('fut');
     const click = doneDates.has(iso) ? ` onclick="openDay('${iso}')"` : '';
-    html += `<div class="${cls.join(' ')}"${click}>${d}${weightDates.has(iso)?'<span class="w"></span>':''}${cardioDates.has(iso)?'<span class="c"></span>':''}</div>`;
+    html += `<div class="${cls.join(' ')}"${click}>${d}${weightDates.has(iso)?'<span class="w"></span>':''}</div>`;
   }
   $('#cal-grid').innerHTML = html;
 }
 
-/* ============ ТЕЛО: ВЕС + КАРДИО ============ */
+/* ============ ТЕЛО: ВЕС + КАРДИО ============ *//* ============ ТЕЛО: ВЕС + КАРДИО ============ *//* ============ ТЕЛО: ВЕС + КАРДИО ============ */
 let bodyCur = 'w';
 function bodyTab(t){
   bodyCur = t; haptic();
@@ -1037,7 +1084,7 @@ function renderWeight(){
   if (!ws.length){ log.innerHTML = '<div class="hint">Пока пусто. Первая запись появится здесь.</div>'; }
   else {
     log.innerHTML = [...ws].reverse().slice(0,30).map(w=>{
-      const d = new Date(w.date);
+      const d = new Date(w.date+'T12:00');
       return `<div class="log-item"><b>${String(w.kg).replace('.',',')} кг</b>
         <span>${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)} ${d.getFullYear()}</span>
         <button class="del" onclick="delWeight('${w.date}')" aria-label="удалить">×</button></div>`;
@@ -1167,6 +1214,7 @@ function renderWorkout(){
     }
   });
   html += `<button class="btn" style="margin-top:8px" onclick="finishWorkout()">Завершить тренировку</button>
+           <button class="btn ghost" style="margin-top:10px" onclick="askBackdate()">Записать на прошедшую дату</button>
            <div class="hint" style="text-align:center;margin-top:10px">дата, тоннаж и отметка в календаре сохранятся автоматически</div>`;
   body.innerHTML = html;
   restoreSession();
@@ -1193,13 +1241,13 @@ function setWW(name, val){
   if (v>=0) { store.data.workWeights[name]=v; store.save(); }
 }
 
-function recordExHist(key, kg, c){
+function recordExHist(key, kg, c, dISO){
   if (!(kg>0)) return;
   const h = store.data.exHist[key] || (store.data.exHist[key]=[]);
-  const d = todayISO();
-  const last = h[h.length-1];
-  if (last && last.d===d){ last.kg = kg; if(c) last.c = c; }
-  else h.push(c ? {d, kg, c} : {d, kg});
+  const d = dISO || todayISO();
+  const same = h.find(x=>x.d===d);
+  if (same){ same.kg = kg; if(c) same.c = c; }
+  else { h.push(c ? {d, kg, c} : {d, kg}); h.sort((a,b)=>a.d.localeCompare(b.d)); }
   if (h.length>40) store.data.exHist[key] = h.slice(-40);
 }
 function prevTonnage(prog, workoutNum){
@@ -1216,7 +1264,7 @@ function maxTonnage(prog, workoutNum){
   });
   return m;
 }
-function showSummary(tonnage, workoutNum, prev, isRecord){
+function showSummary(tonnage, workoutNum, prev, isRecord, dateISO){
   cancelRest(true);
   const mins = woStartTs ? Math.round((Date.now()-woStartTs)/60000) : 0;
   let delta = '';
@@ -1233,6 +1281,7 @@ function showSummary(tonnage, workoutNum, prev, isRecord){
     <div class="hint">тоннаж за тренировку</div>
     ${delta?`<div style="margin-top:10px">${delta}</div>`:''}
     ${mins>0?`<div class="hint" style="margin-top:6px">длительность ~${mins} мин</div>`:''}
+    ${dateISO && dateISO!==todayISO() ? `<div class="hint" style="margin-top:6px">записана на ${fmtDateRu(dateISO)}</div>` : ''}
     <button class="btn" style="margin-top:22px" onclick="go('home')">На главную</button>
     <button class="btn ghost" style="margin-top:10px" id="undo-btn" onclick="undoFinish()">Отменить завершение · 10</button>
   </div>`;
@@ -1240,8 +1289,9 @@ function showSummary(tonnage, workoutNum, prev, isRecord){
   window.scrollTo(0,0);
 }
 
-function finishWorkout(){
+function finishWorkout(dateISO){
   takeUndoSnap();
+  const D = dateISO || todayISO();
   const v = woView ?? {week:store.data.week, workout:store.data.workout};
   const w = v.week, n = v.workout;
   const key = cycleForWeek(w), cyc = CYCLES[key], sets = setsForWeek(w);
@@ -1258,14 +1308,15 @@ function finishWorkout(){
         reps = el && parseInt(el.value)>0 ? parseInt(el.value) : 0;
       }
       tonnage += kg*reps*sets;
-      recordExHist(ex.n, kg, key);
+      recordExHist(ex.n, kg, key, D);
     }
   });
   tonnage = Math.round(tonnage);
   const prev = prevTonnage('tengo', n);
   const best = maxTonnage('tengo', n);
   const mins = woStartTs ? Math.round((Date.now()-woStartTs)/60000) : 0;
-  store.data.history.push({date:todayISO(), week:w, workout:n, tonnage, mins, rm:store.data.benchRM});
+  store.data.history.push({date:D, week:w, workout:n, tonnage, mins, rm:store.data.benchRM});
+  store.data.history.sort((a,b)=>a.date.localeCompare(b.date));
   if (store.data.history.length>300) store.data.history = store.data.history.slice(-300);
   // продвижение по циклу
   if (n<3) store.data.workout = n+1;
@@ -1274,7 +1325,7 @@ function finishWorkout(){
   store.save();
   haptic('ok');
   woView = null;
-  showSummary(tonnage, n, prev, best!==null && tonnage>best);
+  showSummary(tonnage, n, prev, best!==null && tonnage>best, D);
 }
 
 function renderAomameWorkout(){
@@ -1313,6 +1364,7 @@ function renderAomameWorkout(){
     <div style="margin-top:8px">${wo.cooldown.map(c=>`<div class="bench-part" style="font-size:14px">${c}</div>`).join('')}</div>
   </div>
   <button class="btn" style="margin-top:8px" onclick="finishAomame()">Завершить тренировку</button>
+  <button class="btn ghost" style="margin-top:10px" onclick="askBackdate()">Записать на прошедшую дату</button>
   <div class="hint" style="text-align:center;margin-top:10px">дата, тоннаж и отметка в календаре сохранятся автоматически</div>`;
   $('#wo-body').innerHTML = html;
   restoreSession();
@@ -1321,8 +1373,9 @@ function setAW(name, val){
   const v = parseFloat(String(val).replace(',','.'));
   if (v>=0) { store.data.aWeights[name]=v; store.save(); }
 }
-function finishAomame(){
+function finishAomame(dateISO){
   takeUndoSnap();
+  const D = dateISO || todayISO();
   const n = aView ?? store.data.aWorkout;
   const wo = AOMAME[n-1];
   let tonnage = 0;
@@ -1335,19 +1388,20 @@ function finishAomame(){
   tonnage = Math.round(tonnage);
   wo.blocks.forEach(b=>b.ex.forEach(e=>{
     const kg = store.data.aWeights[e.n] !== undefined ? store.data.aWeights[e.n] : (e.def||0);
-    recordExHist('a:'+e.n, kg, 'w'+n);
+    recordExHist('a:'+e.n, kg, 'w'+n, D);
   }));
   const prev = prevTonnage('aomame', n);
   const best = maxTonnage('aomame', n);
   const mins = woStartTs ? Math.round((Date.now()-woStartTs)/60000) : 0;
-  store.data.history.push({date:todayISO(), prog:'aomame', workout:n, tonnage, mins});
+  store.data.history.push({date:D, prog:'aomame', workout:n, tonnage, mins});
+  store.data.history.sort((a,b)=>a.date.localeCompare(b.date));
   if (store.data.history.length>300) store.data.history = store.data.history.slice(-300);
   store.data.aWorkout = n<3 ? n+1 : 1;
   store.data.session = null;
   store.save();
   haptic('ok');
   aView = null;
-  showSummary(tonnage, n, prev, best!==null && tonnage>best);
+  showSummary(tonnage, n, prev, best!==null && tonnage>best, D);
 }
 
 let maxArm = 0;
@@ -1718,7 +1772,7 @@ function restoreSession(){
 let undoSnap = null, undoTimer = null, undoLeft = 0;
 function takeUndoSnap(){
   undoSnap = {
-    histLen: store.data.history.length,
+    hist: JSON.stringify(store.data.history),
     week: store.data.week, workout: store.data.workout, aWorkout: store.data.aWorkout,
     exHist: JSON.stringify(store.data.exHist),
     session: JSON.stringify(store.data.session || null)
@@ -1739,7 +1793,7 @@ function startUndoCountdown(){
 function undoFinish(){
   if (!undoSnap) return;
   clearInterval(undoTimer);
-  store.data.history.length = undoSnap.histLen;
+  store.data.history = JSON.parse(undoSnap.hist);
   store.data.week = undoSnap.week;
   store.data.workout = undoSnap.workout;
   store.data.aWorkout = undoSnap.aWorkout;
@@ -1750,6 +1804,25 @@ function undoFinish(){
   haptic('ok');
   toast('Завершение отменено — продолжаем');
   go('workout');
+}
+
+/* ============ ЗАПИСЬ ЗАДНИМ ЧИСЛОМ ============ */
+function askBackdate(){
+  const y = new Date(); y.setDate(y.getDate()-1);
+  const yISO = y.getFullYear()+'-'+String(y.getMonth()+1).padStart(2,'0')+'-'+String(y.getDate()).padStart(2,'0');
+  openModal(`
+    <div class="label">записать тренировку задним числом</div>
+    <div class="hint" style="margin-top:8px">введённые веса и отмеченные подходы сохранятся как есть, тренировка попадёт в календарь и историю выбранным днём, цикл продвинется как обычно</div>
+    <div class="label" style="margin-top:14px">дата тренировки</div>
+    <input type="date" id="bd-date" value="${yISO}" max="${todayISO()}">
+    <button class="btn" style="margin-top:16px" onclick="backdateFinish()">Завершить этой датой</button>
+    <button class="btn ghost" style="margin-top:10px" onclick="closeModal()">Отмена</button>`);
+}
+function backdateFinish(){
+  const d = $('#bd-date').value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > todayISO()){ toast('Укажи прошедшую дату'); return; }
+  closeModal();
+  if (store.data.program==='aomame') finishAomame(d); else finishWorkout(d);
 }
 
 /* ============ ЖУРНАЛ ТРЕНИРОВОК: ПРОСМОТР И РЕДАКТИРОВАНИЕ ============ */
