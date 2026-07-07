@@ -81,37 +81,37 @@ header h1 .yr{color:var(--muted);font-weight:500}
   flex:1;min-height:0;
   background:var(--panel);
   border-radius:24px;
-  overflow:auto;
+  overflow-y:auto;overflow-x:hidden;
   overscroll-behavior:contain;
   position:relative;
+  touch-action:pan-y;
 }
 #grid{
   display:grid;
-  min-width:100%;
-  width:max-content;
+  width:100%;
   font-family:'JetBrains Mono',monospace;
 }
 .gcell{
   height:52px;
   display:flex;align-items:center;justify-content:center;
-  font-size:15px;
+  font-size:13.5px;
   white-space:nowrap;
-  padding:0 14px;
+  padding:0 6px;
+  min-width:0;
 }
 .ghead{
   position:sticky;top:0;z-index:3;
   background:var(--panel);
   color:var(--muted);
-  font-size:13px;letter-spacing:1px;
+  font-size:11px;letter-spacing:.5px;
   height:56px;
   cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;
 }
 .gday{
-  position:sticky;left:0;z-index:2;
-  background:var(--panel);
   justify-content:flex-start;
-  gap:12px;
-  padding-left:18px;padding-right:10px;
+  gap:9px;
+  padding-left:14px;padding-right:6px;
   cursor:pointer;
 }
 .gday .num{font-weight:600;font-size:16px}
@@ -120,7 +120,19 @@ header h1 .yr{color:var(--muted);font-weight:500}
   background:var(--red);color:#fff;
   border-radius:7px;padding:1px 5px;margin-left:-5px;
 }
-.corner{position:sticky;left:0;top:0;z-index:4;background:var(--panel)}
+.corner{flex-direction:column;gap:5px;cursor:default;overflow:visible}
+.corner .prow{display:flex;gap:6px}
+.pgbtn{
+  width:27px;height:27px;border:none;border-radius:9px;
+  background:var(--btn);color:var(--text);
+  font-size:14px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;padding:0;
+}
+.pgbtn:disabled{opacity:.28}
+.pgdots{display:flex;gap:5px}
+.pgdots i{width:4px;height:4px;border-radius:50%;background:var(--faint)}
+.pgdots i.on{background:var(--text)}
+.gempty{padding:52px 26px;text-align:center;color:var(--muted);font-size:15px;font-family:'Inter',sans-serif;line-height:1.6}
 .rowsel{background:var(--sel) !important}
 .rowalt{background:var(--row-alt)}
 .future{opacity:.32;pointer-events:none}
@@ -626,6 +638,8 @@ function fromISO(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m
 const todayISO = iso(new Date());
 let view = { y:new Date().getFullYear(), m:new Date().getMonth() };
 let selectedDate = todayISO;
+const PAGE = 5;                    // трекеров на странице сетки
+let gridPage = 0;
 
 /* ================= Theme ================= */
 function applyTheme(){
@@ -700,14 +714,31 @@ function render(){
     sel.getDate() + ' ' + MONTHS_SHORT[sel.getMonth()];
 
   const grid = document.getElementById('grid');
-  const ts = state.trackers;
-  grid.style.gridTemplateColumns = '92px repeat(' + Math.max(ts.length,1) + ', minmax(96px,1fr))';
+  const all = state.trackers;
 
-  let html = '<div class="gcell ghead corner"></div>';
+  if(!all.length){
+    grid.style.gridTemplateColumns = '1fr';
+    grid.innerHTML = '<div class="gempty">Пока нет трекеров.<br>Добавь первый — кнопка «+» внизу.</div>';
+    return;
+  }
+
+  const pages = Math.ceil(all.length/PAGE);
+  gridPage = Math.max(0, Math.min(gridPage, pages-1));
+  const ts = all.slice(gridPage*PAGE, gridPage*PAGE + PAGE);
+
+  grid.style.gridTemplateColumns = '72px repeat(' + ts.length + ', minmax(max-content, 1fr))';
+
+  let corner = '';
+  if(pages > 1){
+    corner = '<div class="prow">'
+      + '<button class="pgbtn" id="pgPrev"' + (gridPage===0?' disabled':'') + '>‹</button>'
+      + '<button class="pgbtn" id="pgNext"' + (gridPage===pages-1?' disabled':'') + '>›</button></div>'
+      + '<div class="pgdots">' + Array.from({length:pages},(_,i)=>'<i class="'+(i===gridPage?'on':'')+'"></i>').join('') + '</div>';
+  }
+  let html = '<div class="gcell ghead corner">' + corner + '</div>';
   ts.forEach(t=>{
     html += '<div class="gcell ghead" data-det="'+t.id+'">'+esc(t.symbol||t.name.slice(0,5).toUpperCase())+'</div>';
   });
-  if(!ts.length) html += '<div class="gcell ghead"></div>';
 
   const days = new Date(view.y, view.m+1, 0).getDate();
   for(let d=1; d<=days; d++){
@@ -725,7 +756,6 @@ function render(){
       const v = (state.entries[dateISO]||{})[t.id];
       html += '<div class="gcell gval'+rowCls+'" data-date="'+dateISO+'" data-tid="'+t.id+'">'+fmtCell(t,v)+'</div>';
     });
-    if(!ts.length) html += '<div class="gcell'+rowCls+'"></div>';
   }
   grid.innerHTML = html;
 
@@ -742,7 +772,35 @@ function render(){
   grid.querySelectorAll('.ghead[data-det]').forEach(c=>{
     c.addEventListener('click', ()=> openDetail(c.dataset.det));
   });
+  const pp=document.getElementById('pgPrev'); if(pp) pp.addEventListener('click', ()=>setPage(gridPage-1));
+  const pn=document.getElementById('pgNext'); if(pn) pn.addEventListener('click', ()=>setPage(gridPage+1));
+
+  /* при смене месяца: текущий — скроллим к сегодня, другой — наверх */
+  const vk = view.y+'-'+view.m;
+  if(render._vk !== vk){
+    render._vk = vk;
+    const now = new Date();
+    if(view.y===now.getFullYear() && view.m===now.getMonth()) scrollToToday();
+    else document.getElementById('gridPanel').scrollTop = 0;
+  }
 }
+function setPage(p){
+  const pages = Math.max(1, Math.ceil(state.trackers.length/PAGE));
+  const np = Math.max(0, Math.min(pages-1, p));
+  if(np===gridPage) return;
+  gridPage = np; hap('light'); render();
+}
+/* свайп по сетке листает страницы трекеров */
+(function(){
+  const panel = document.getElementById('gridPanel');
+  let sx=null, sy=null;
+  panel.addEventListener('touchstart', e=>{ sx=e.touches[0].clientX; sy=e.touches[0].clientY; }, {passive:true});
+  panel.addEventListener('touchend', e=>{
+    if(sx===null) return;
+    const dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy; sx=null;
+    if(Math.abs(dx)>55 && Math.abs(dx)>Math.abs(dy)*1.6) setPage(gridPage + (dx<0?1:-1));
+  }, {passive:true});
+})();
 function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 document.getElementById('btnPrev').addEventListener('click', ()=>{
@@ -992,6 +1050,7 @@ document.getElementById('tCreate').addEventListener('click', ()=>{
     Object.assign(t, {name, symbol, type, unit});
   } else {
     state.trackers.push({id:uid(), name, symbol, type, unit, created:todayISO});
+    gridPage = Math.floor((state.trackers.length-1)/PAGE);
   }
   save(); hap('success'); closeSheet('trackerSheet'); render(); renderTrackersList();
   if(editingId && document.getElementById('detail').classList.contains('open')) openDetail(editingId);
