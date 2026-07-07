@@ -81,6 +81,9 @@ h1{font-family:var(--serif);font-weight:400;font-size:34px;line-height:1.1;lette
 .cal-cell.today{outline:1.5px solid var(--ink)}
 .cal-cell.done{background:var(--accent);color:var(--on-accent);font-weight:600}
 .cal-cell .w{position:absolute;bottom:1px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--ok)}
+.cal-cell .c{position:absolute;top:1px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;border:1.5px solid var(--ok);box-sizing:border-box}
+.goalbar{height:8px;border-radius:99px;background:var(--card);overflow:hidden;margin-top:10px}
+.goalbar i{display:block;height:100%;background:var(--ok);border-radius:99px;transition:width .3s}
 
 /* следующая тренировка */
 .next-card{background:var(--ink);color:var(--bg);border-radius:var(--r-lg);padding:22px;margin-bottom:14px}
@@ -133,7 +136,7 @@ input:focus,select:focus{border-color:var(--ink)}
 .seg button.on{background:var(--ink);color:var(--bg)}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted);text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
-td{padding:9px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+td{padding:9px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
 td.serif{font-family:var(--serif);font-size:15px;white-space:nowrap}
 tr.now td{background:var(--card-2)}
 
@@ -161,7 +164,7 @@ html[data-theme=dark] nav button.on{background:var(--accent);color:var(--on-acce
 .toast.show{opacity:1}
 
 /* поле кг в таблицах — фиксированная ширина, не сжимается */
-.kg-in{width:74px;min-width:74px;max-width:74px;padding:8px 10px;text-align:right}
+.kg-in{width:80px;min-width:80px;max-width:80px;padding:8px 4px;text-align:center;box-sizing:border-box}
 td.nw{white-space:nowrap}
 
 /* таймер отдыха */
@@ -197,6 +200,14 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 
 /* ---- журнал и редактирование тренировок ---- */
+.dchip{font-weight:700;font-size:12px}
+.dchip.up{color:var(--ok)}
+.dchip.down{color:var(--muted)}
+.ph-list{padding:0 2px 10px;border-bottom:1px solid var(--line)}
+.ph-list .log-item{padding:7px 0;border-bottom:none;font-size:13px}
+.modal-card .delta{font-weight:700;font-size:13px;margin-top:6px}
+.modal-card .delta.up{color:var(--ok)}
+.modal-card .big{margin-top:8px}
 .cal-cell.done{cursor:pointer}
 .jrow{display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer}
 .jrow:active{opacity:.65}
@@ -242,6 +253,7 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
   </div>
 
   <div id="home-last"></div>
+  <div id="home-cardio"></div>
 
   <div class="row2">
     <div class="card light">
@@ -265,15 +277,21 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
       </div>
     </div>
     <div class="cal-grid" id="cal-grid"></div>
-    <div class="hint">заполненный день — выполненная тренировка, точка — запись веса</div>
+    <div class="hint">заполненный день — тренировка · точка снизу — вес · кольцо сверху — кардио</div>
   </div>
 </section>
 
-<!-- ВЕС -->
+<!-- ТЕЛО: ВЕС + КАРДИО -->
 <section class="screen" id="scr-weight">
-  <h1>Вес</h1>
-  <p class="sub">взвешивайся в дни тренировок и фиксируй здесь</p>
+  <h1>Тело</h1>
+  <p class="sub" id="body-sub">взвешивайся в дни тренировок и фиксируй здесь</p>
 
+  <div class="seg" style="margin-bottom:14px">
+    <button class="on" id="bt-w" onclick="bodyTab('w')">Вес</button>
+    <button id="bt-c" onclick="bodyTab('c')">Кардио</button>
+  </div>
+
+  <div id="w-pane">
   <div class="card light">
     <div class="label">новая запись</div>
     <div class="inline">
@@ -292,6 +310,54 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
     <div class="label">последние записи</div>
     <div id="w-log"></div>
   </div>
+  </div><!-- /w-pane -->
+
+  <div id="c-pane" style="display:none">
+    <div class="card light">
+      <div class="label">новая запись · дорожка</div>
+      <div class="inline">
+        <input type="number" id="c-mins" inputmode="numeric" min="1" max="600" placeholder="минуты">
+        <input type="number" id="c-dist" inputmode="decimal" step="0.01" placeholder="км (с дорожки)">
+        <button class="btn" onclick="addCardio()">Записать</button>
+      </div>
+      <div class="hint">км — по дисплею дорожки, необязательно; записи за один день суммируются</div>
+    </div>
+    <div class="card">
+      <div class="label">этот месяц</div>
+      <div style="display:flex;gap:16px">
+        <div style="flex:1">
+          <div class="big" id="c-month" style="font-size:32px">0<small>мин</small></div>
+          <div class="hint" id="c-pace"></div>
+        </div>
+        <div style="flex:1">
+          <div class="big" id="c-km" style="font-size:32px">0<small>км</small></div>
+          <div class="hint" id="c-steps"></div>
+        </div>
+      </div>
+      <div id="c-goalwrap"></div>
+    </div>
+    <div class="card light">
+      <div class="label">цели на месяц</div>
+      <div class="inline" style="margin-bottom:10px">
+        <input type="number" id="c-goal-in" inputmode="numeric" min="0" placeholder="минуты, напр. 600">
+        <input type="number" id="c-goal-km" inputmode="decimal" step="0.5" min="0" placeholder="км, напр. 40">
+      </div>
+      <button class="btn ghost" onclick="saveCardioGoal()">Сохранить цели</button>
+      <div class="hint" style="margin-top:8px">можно задать одну или обе · пустое поле — не менять · 0 — убрать цель</div>
+    </div>
+    <div class="card">
+      <div class="label">по неделям</div>
+      <div class="seg" style="margin:10px 0">
+        <button class="on" id="cm-mins" onclick="setCMetric('mins')">минуты</button>
+        <button id="cm-km" onclick="setCMetric('km')">км</button>
+      </div>
+      <svg id="c-bars" viewBox="0 0 320 98" style="width:100%;height:auto;display:block"></svg>
+    </div>
+    <div class="card light">
+      <div class="label">последние записи</div>
+      <div id="c-log"></div>
+    </div>
+  </div><!-- /c-pane -->
 </section>
 
 <!-- ТЕКУЩАЯ ТРЕНИРОВКА -->
@@ -303,7 +369,7 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
     <b id="wo-pos" style="font-size:13px;font-weight:700"></b>
     <div class="cal-nav"><button onclick="woShift(1)">›</button></div>
   </div>
-  <div class="hint" id="wo-offplan" style="display:none;margin:-6px 2px 14px">Это не твоя текущая позиция. После завершения цикл продолжится отсюда.</div>
+  <div class="hint" id="wo-offplan" style="display:none;margin:-6px 2px 14px">Это не твоя текущая позиция. После завершения цикл продолжится отсюда. <b style="text-decoration:underline;cursor:pointer" onclick="resetWoView()">Вернуться к текущей</b></div>
   <div id="wo-body"></div>
 </section>
 
@@ -313,11 +379,9 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
   <p class="sub">все микроциклы, рабочие веса и таблица жима</p>
 
   <div class="seg" id="prog-seg">
-    <button class="on" onclick="progTab('pump',this)">Памп.</button>
-    <button onclick="progTab('volume',this)">Объём.</button>
-    <button onclick="progTab('power',this)">Силов.</button>
+    <button class="on" onclick="progTab('cycles',this)">Циклы</button>
     <button onclick="progTab('bench',this)">Жим</button>
-    <button onclick="progTab('progress',this)">Прогр.</button>
+    <button onclick="progTab('progress',this)">Прогресс</button>
   </div>
   <div id="prog-body"></div>
 
@@ -350,7 +414,7 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
   </button>
   <button id="nav-weight" onclick="go('weight')">
     <svg viewBox="0 0 24 24"><path d="M4 20 20 4"/><circle cx="7" cy="17" r="3"/><circle cx="17" cy="7" r="3"/></svg>
-    вес
+    тело
   </button>
   <button id="nav-workout" onclick="go('workout')">
     <svg viewBox="0 0 24 24"><path d="M2 12h3M19 12h3M7 8v8M17 8v8M7 12h10"/></svg>
@@ -519,21 +583,28 @@ const AOMAME = [
 const UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || 'local';
 const SKEY = 'tp1703_' + UID;
 const store = {
-  data: { weights:[], history:[], workWeights:{}, week:1, workout:1, benchRM:100, program:'tengo', aWorkout:1, aWeights:{}, exHist:{}, rmHist:[], theme:'light', session:null },
-  load(){
+  data: { weights:[], history:[], workWeights:{}, week:1, workout:1, benchRM:100, program:'tengo', aWorkout:1, aWeights:{}, exHist:{}, rmHist:[], theme:'light', session:null, cardio:[], cardioGoal:0, cardioGoalKm:0 },
+  load(onCloud){
     const local = localStorage.getItem(SKEY) || (UID==='local' ? localStorage.getItem('tp1703') : null);
     if (local) { try{ Object.assign(this.data, JSON.parse(local)); }catch(e){} }
-    return new Promise(res=>{
-      if (tg && tg.CloudStorage && tg.CloudStorage.getItem) {
+    if (tg && tg.CloudStorage && tg.CloudStorage.getItem) {
+      try{
         tg.CloudStorage.getItem('tp1703', (err,val)=>{
-          if (!err && val) { try{ Object.assign(this.data, JSON.parse(val)); }catch(e){} }
-          res();
+          if (err || !val) return;
+          try{
+            const cloud = JSON.parse(val);
+            /* облако применяем только если оно новее локальных данных (или локальных нет) */
+            if ((cloud.savedAt||0) > (this.data.savedAt||0) || !local){
+              Object.assign(this.data, cloud);
+              if (onCloud) onCloud();
+            }
+          }catch(e){}
         });
-        setTimeout(res, 1200); // страховка, если облако молчит
-      } else res();
-    });
+      }catch(e){}
+    }
   },
   save(){
+    this.data.savedAt = Date.now();
     const json = JSON.stringify(this.data);
     localStorage.setItem(SKEY, json);
     if (tg && tg.CloudStorage && tg.CloudStorage.setItem) {
@@ -679,13 +750,22 @@ function setProgram(p){
   haptic('ok');
   renderHome();
 }
+function rerenderActive(){
+  const act = document.querySelector('.screen.active'); if(!act) return;
+  const id = act.id.replace('scr-','');
+  if(id==='home') renderHome();
+  else if(id==='weight') renderBodyScreen();
+  else if(id==='workout') renderWorkout();
+  else if(id==='program') renderProgram();
+}
+function resetWoView(){ woView=null; aView=null; renderWorkout(); haptic(); }
 function go(name){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
   $('#scr-'+name).classList.add('active');
   $('#nav-'+name).classList.add('on');
   if(name==='home') renderHome();
-  if(name==='weight') renderWeight();
+  if(name==='weight') renderBodyScreen();
   if(name==='workout'){ woView=null; aView=null; renderWorkout(); }
   if(name==='program') renderProgram();
   window.scrollTo(0,0);
@@ -759,6 +839,22 @@ function renderHome(){
       <span style="font-size:22px;color:var(--muted)">›</span>
     </div>` : '';
 
+  const cm = monthCardio();
+  const gM = store.data.cardioGoal||0, gK = store.data.cardioGoalKm||0;
+  $('#home-cardio').innerHTML = (cm.mins>0 || (store.data.cardio||[]).length || gM || gK) ? `
+    <div class="card light jrow" style="margin-bottom:14px" onclick="goCardio()">
+      <div style="flex:1">
+        <div class="label">кардио за месяц</div>
+        <div style="display:flex;gap:14px;align-items:baseline">
+          <div class="big" style="font-size:30px">${cm.mins}<small>мин</small></div>
+          ${cm.km>0?`<div class="big" style="font-size:30px">${cm.km.toFixed(1).replace('.',',')}<small>км</small></div>`:''}
+        </div>
+        ${(gM||gK)
+          ? `<div style="max-width:230px">${goalBars(cm)}</div>`
+          : `<div class="hint" style="margin-top:3px">${cm.km>0?'≈'+fmt(estSteps(cm.km))+' шагов · ':''}цель не задана</div>`}
+      </div>
+      <span style="font-size:22px;color:var(--muted)">›</span>
+    </div>` : '';
   renderCalendar();
 }
 
@@ -772,6 +868,7 @@ function renderCalendar(){
     (monthVol>0 ? ` <span style="font-family:var(--serif);font-weight:400;color:var(--muted)">· ${fmt(monthVol)} кг</span>` : '');
   const doneDates = new Set(store.data.history.map(h=>h.date));
   const weightDates = new Set(store.data.weights.map(w=>w.date));
+  const cardioDates = new Set((store.data.cardio||[]).map(c=>c.date));
   const first = new Date(y,m,1);
   const startDow = (first.getDay()+6)%7; // пн=0
   const days = new Date(y,m+1,0).getDate();
@@ -784,12 +881,140 @@ function renderCalendar(){
     if (iso===today) cls.push('today');
     if (doneDates.has(iso)) cls.push('done');
     const click = doneDates.has(iso) ? ` onclick="openDay('${iso}')"` : '';
-    html += `<div class="${cls.join(' ')}"${click}>${d}${weightDates.has(iso)?'<span class="w"></span>':''}</div>`;
+    html += `<div class="${cls.join(' ')}"${click}>${d}${weightDates.has(iso)?'<span class="w"></span>':''}${cardioDates.has(iso)?'<span class="c"></span>':''}</div>`;
   }
   $('#cal-grid').innerHTML = html;
 }
 
-/* ============ ВЕС ============ */
+/* ============ ТЕЛО: ВЕС + КАРДИО ============ */
+let bodyCur = 'w';
+function bodyTab(t){
+  bodyCur = t; haptic();
+  renderBodyScreen();
+}
+function renderBodyScreen(){
+  $('#bt-w').classList.toggle('on', bodyCur==='w');
+  $('#bt-c').classList.toggle('on', bodyCur==='c');
+  $('#w-pane').style.display = bodyCur==='w' ? '' : 'none';
+  $('#c-pane').style.display = bodyCur==='c' ? '' : 'none';
+  $('#body-sub').textContent = bodyCur==='w'
+    ? 'взвешивайся в дни тренировок и фиксируй здесь'
+    : 'дорожка в горку: минуты обязательно, километры — если дорожка показала';
+  if (bodyCur==='w') renderWeight(); else renderCardio();
+}
+function goCardio(){ bodyCur='c'; go('weight'); }
+
+const STEP_M = 1.80*0.414; /* длина шага ~0,75 м при росте 180 */
+const estSteps = km => Math.round(km*1000/STEP_M/100)*100;
+function monthCardio(){
+  const mNow = todayISO().slice(0,7);
+  const rows = (store.data.cardio||[]).filter(c=>c.date.startsWith(mNow));
+  return {
+    mins: rows.reduce((s,c)=>s+c.mins,0),
+    km:   rows.reduce((s,c)=>s+(c.dist||0),0)
+  };
+}
+function addCardio(){
+  const mins = parseInt($('#c-mins').value);
+  if (!(mins>0)){ toast('Введи минуты'); return; }
+  const dist = parseFloat(String($('#c-dist').value||'').replace(',','.')) || 0;
+  const date = todayISO();
+  const arr = store.data.cardio || (store.data.cardio=[]);
+  const same = arr.find(c=>c.date===date);
+  if (same){ same.mins += mins; same.dist = (same.dist||0) + dist; }
+  else arr.push({date, mins, dist: dist||undefined});
+  arr.sort((a,b)=>a.date.localeCompare(b.date));
+  store.save();
+  $('#c-mins').value=''; $('#c-dist').value='';
+  haptic('ok'); toast('Кардио записано');
+  renderCardio();
+}
+function delCardio(date){
+  store.data.cardio = (store.data.cardio||[]).filter(c=>c.date!==date);
+  store.save(); haptic(); renderCardio();
+}
+function saveCardioGoal(){
+  const rawM = $('#c-goal-in').value, rawK = $('#c-goal-km').value;
+  if (rawM==='' && rawK===''){ toast('Введи цель в минутах или км'); return; }
+  if (rawM!==''){
+    const v = parseInt(rawM);
+    if (!(v>=0)){ toast('Минуты — целое число'); return; }
+    store.data.cardioGoal = v;
+  }
+  if (rawK!==''){
+    const v = parseFloat(String(rawK).replace(',','.'));
+    if (!(v>=0)){ toast('Км — число'); return; }
+    store.data.cardioGoalKm = v;
+  }
+  store.save();
+  $('#c-goal-in').value=''; $('#c-goal-km').value='';
+  haptic('ok'); toast('Цели обновлены');
+  renderCardio();
+}
+let cMetric = 'mins';
+function setCMetric(m){ cMetric=m; haptic(); renderCardio(); }
+function goalBars(m){
+  const gM = store.data.cardioGoal||0, gK = store.data.cardioGoalKm||0;
+  if (!gM && !gK) return '';
+  const bar = (label,val,goal,unit,dec)=>{
+    const pct = Math.min(100, Math.round(val/goal*100));
+    const vv = dec ? val.toFixed(1).replace('.',',') : Math.round(val);
+    const gg = dec ? String(goal).replace('.',',') : goal;
+    return `<div class="hint" style="margin-top:10px;display:flex;justify-content:space-between">
+        <span>${label}</span><span>${vv} / ${gg} ${unit}${val>=goal?' · выполнена':''}</span></div>
+      <div class="goalbar" style="margin-top:5px"><i style="width:${pct}%"></i></div>`;
+  };
+  let h='';
+  if (gM) h += bar('минуты', m.mins, gM, 'мин', false);
+  if (gK) h += bar('километры', m.km, gK, 'км', true);
+  return h;
+}
+function renderCardio(){
+  const m = monthCardio();
+  $('#c-month').innerHTML = m.mins + '<small>мин</small>';
+  $('#c-km').innerHTML = m.km.toFixed(1).replace('.',',') + '<small>км</small>';
+  $('#c-steps').textContent = m.km>0 ? '≈'+fmt(estSteps(m.km))+' шагов' : 'впиши км с дорожки';
+  $('#c-pace').textContent = (m.km>0 && m.mins>0) ? 'средняя '+(m.km/(m.mins/60)).toFixed(1).replace('.',',')+' км/ч' : '';
+  const g = store.data.cardioGoal||0, gk = store.data.cardioGoalKm||0;
+  $('#c-goal-in').placeholder = g ? 'минуты: '+g : 'минуты, напр. 600';
+  $('#c-goal-km').placeholder = gk ? 'км: '+String(gk).replace('.',',') : 'км, напр. 40';
+  const gb = goalBars(m);
+  $('#c-goalwrap').innerHTML = gb || `<div class="hint" style="margin-top:8px">поставь цель на месяц ниже — тут появится прогресс</div>`;
+  /* график по неделям: минуты или км */
+  $('#cm-mins').classList.toggle('on', cMetric==='mins');
+  $('#cm-km').classList.toggle('on', cMetric==='km');
+  const start = mondayOf(new Date());
+  const weeks=[]; for(let i=7;i>=0;i--) weeks.push(new Date(start.getTime()-i*7*864e5));
+  const vals = weeks.map(ws=>{
+    const a=ws.getTime(), b=a+7*864e5;
+    return (store.data.cardio||[]).filter(c=>{const t=new Date(c.date+'T12:00').getTime();return t>=a&&t<b;})
+      .reduce((s,c)=> s + (cMetric==='mins' ? c.mins : (c.dist||0)), 0);
+  });
+  const max=Math.max(...vals,cMetric==='mins'?1:0.1), W=320,H=98,bw=26,gap=(W-8*bw)/7;
+  let bars='';
+  vals.forEach((v,i)=>{
+    const h=Math.max(2,Math.round(v/max*(H-20)));
+    const x=i*(bw+gap);
+    const lbl = v>0 ? (cMetric==='km' ? v.toFixed(1).replace('.',',') : v) : '';
+    bars += `<rect x="${x}" y="${H-16-h}" width="${bw}" height="${h}" rx="5" fill="var(--ink)" opacity="${i===7?1:.3}"/>`
+      + (lbl?`<text x="${x+bw/2}" y="${H-20-h}" font-size="9" fill="var(--muted)" text-anchor="middle" font-family="var(--sans)">${lbl}</text>`:'')
+      + `<text x="${x+bw/2}" y="${H-3}" font-size="9" fill="var(--muted)" text-anchor="middle" font-family="var(--sans)">${String(weeks[i].getDate()).padStart(2,'0')}.${String(weeks[i].getMonth()+1).padStart(2,'0')}</text>`;
+  });
+  $('#c-bars').innerHTML = bars;
+  /* журнал: минуты · км · скорость */
+  const arr=[...(store.data.cardio||[])].reverse().slice(0,30);
+  $('#c-log').innerHTML = arr.length ? arr.map(c=>{
+    const dd=new Date(c.date+'T12:00');
+    const extra = c.dist
+      ? ' · '+c.dist.toFixed(1).replace('.',',')+' км · '+(c.dist/(c.mins/60)).toFixed(1).replace('.',',')+' км/ч'
+      : '';
+    return `<div class="log-item"><b>${c.mins} мин${extra}</b>
+      <span>${dd.getDate()} ${MONTHS[dd.getMonth()].slice(0,3)}
+      <b style="margin-left:8px;cursor:pointer" onclick="delCardio('${c.date}')">×</b></span></div>`;
+  }).join('') : '<div class="hint">Пока пусто. Первая запись появится здесь.</div>';
+}
+
+/* ============ ВЕС ============ *//* ============ ВЕС ============ */
 function addWeight(){
   const v = parseFloat($('#w-input').value.replace(',','.'));
   if (!v || v<30 || v>250){ toast('Введи вес в кг'); return; }
@@ -832,6 +1057,20 @@ function renderWeight(){
     ${pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p.kg)}" r="3" fill="var(--ink)"/>`).join('')}
   `;
   $('#w-range').textContent = `диапазон: ${min.toFixed(1).replace('.',',')} — ${max.toFixed(1).replace('.',',')} кг · последние ${pts.length} записей`;
+  /* мини-статистика: среднее за 7 дней и дельта за 30 */
+  if (ws.length){
+    const now = Date.now();
+    const in7 = ws.filter(w=> now - new Date(w.date+'T12:00').getTime() <= 7*864e5);
+    const avg7 = in7.length ? in7.reduce((s,w)=>s+w.kg,0)/in7.length : null;
+    const past = [...ws].reverse().find(w=> now - new Date(w.date+'T12:00').getTime() >= 30*864e5);
+    const d30 = past ? ws[ws.length-1].kg - past.kg : null;
+    let extra = '';
+    if (avg7!==null) extra += ` · ср. 7 дн: ${avg7.toFixed(1).replace('.',',')}`;
+    if (d30!==null)  extra += ` · 30 дн: ${d30>0?'+':d30<0?'−':''}${Math.abs(d30).toFixed(1).replace('.',',')} кг`;
+    const wr = $('#w-range');
+    if (wr && extra) wr.textContent += extra;
+  }
+
 }
 
 /* ============ ТЕКУЩАЯ ТРЕНИРОВКА ============ */
@@ -954,12 +1193,13 @@ function setWW(name, val){
   if (v>=0) { store.data.workWeights[name]=v; store.save(); }
 }
 
-function recordExHist(key, kg){
+function recordExHist(key, kg, c){
   if (!(kg>0)) return;
   const h = store.data.exHist[key] || (store.data.exHist[key]=[]);
   const d = todayISO();
   const last = h[h.length-1];
-  if (last && last.d===d) last.kg = kg; else h.push({d, kg});
+  if (last && last.d===d){ last.kg = kg; if(c) last.c = c; }
+  else h.push(c ? {d, kg, c} : {d, kg});
   if (h.length>40) store.data.exHist[key] = h.slice(-40);
 }
 function prevTonnage(prog, workoutNum){
@@ -1018,13 +1258,14 @@ function finishWorkout(){
         reps = el && parseInt(el.value)>0 ? parseInt(el.value) : 0;
       }
       tonnage += kg*reps*sets;
-      recordExHist(ex.n, kg);
+      recordExHist(ex.n, kg, key);
     }
   });
   tonnage = Math.round(tonnage);
   const prev = prevTonnage('tengo', n);
   const best = maxTonnage('tengo', n);
-  store.data.history.push({date:todayISO(), week:w, workout:n, tonnage});
+  const mins = woStartTs ? Math.round((Date.now()-woStartTs)/60000) : 0;
+  store.data.history.push({date:todayISO(), week:w, workout:n, tonnage, mins, rm:store.data.benchRM});
   if (store.data.history.length>300) store.data.history = store.data.history.slice(-300);
   // продвижение по циклу
   if (n<3) store.data.workout = n+1;
@@ -1094,11 +1335,12 @@ function finishAomame(){
   tonnage = Math.round(tonnage);
   wo.blocks.forEach(b=>b.ex.forEach(e=>{
     const kg = store.data.aWeights[e.n] !== undefined ? store.data.aWeights[e.n] : (e.def||0);
-    recordExHist('a:'+e.n, kg);
+    recordExHist('a:'+e.n, kg, 'w'+n);
   }));
   const prev = prevTonnage('aomame', n);
   const best = maxTonnage('aomame', n);
-  store.data.history.push({date:todayISO(), prog:'aomame', workout:n, tonnage});
+  const mins = woStartTs ? Math.round((Date.now()-woStartTs)/60000) : 0;
+  store.data.history.push({date:todayISO(), prog:'aomame', workout:n, tonnage, mins});
   if (store.data.history.length>300) store.data.history = store.data.history.slice(-300);
   store.data.aWorkout = n<3 ? n+1 : 1;
   store.data.session = null;
@@ -1130,7 +1372,9 @@ function finishMax(){
 }
 
 /* ============ ПРОГРАММА ============ */
-let progCurrent = 'pump';
+let progCurrent = 'cycles';
+let cycCurrent = 'pump';
+function setCyc(k){ cycCurrent=k; haptic(); renderProgram(); }
 function progTab(key, btn){
   progCurrent = key;
   document.querySelectorAll('#prog-seg button').forEach(b=>b.classList.remove('on'));
@@ -1148,54 +1392,168 @@ function progressItems(prefix){
   }
   return out;
 }
-function renderProgressList(items){
+function renderProgressList(items, idp){
   if (!items.length) return '<div class="hint">Здесь появятся графики рабочих весов — после первых завершённых тренировок.</div>';
-  return items.map(it=>{
+  return items.map((it,ii)=>{
     const kgs = it.hist.map(x=>x.kg);
-    const first = kgs[0], last = kgs[kgs.length-1], d = last-first;
-    return `<div class="prog-item">
-      <div><div class="nm">${it.name}</div>
-        <div class="dl">${it.hist.length} зап. · ${d===0?'без изменений':(d>0?'+':'−')+Math.abs(d).toFixed(1).replace('.',',').replace(',0','')+' кг'}</div></div>
-      ${sparkline(kgs) || ''}
-      <div class="kgv">${String(last).replace('.',',')} кг</div>
-    </div>`;
+    const last = kgs[kgs.length-1], prev = kgs.length>1 ? kgs[kgs.length-2] : null;
+    const d = prev===null ? null : last-prev;
+    const chip = d===null ? 'первая запись'
+      : d===0 ? 'как в прошлый раз'
+      : `<span class="dchip ${d>0?'up':'down'}">${d>0?'+':'−'}${fmtKg(Math.abs(d))} кг к прошлой</span>`;
+    const id = 'ph_'+(idp||'x')+'_'+ii;
+    return `<div class="prog-item" style="cursor:pointer" onclick="togglePH('${id}')">
+      <div><div class="nm">${it.name}</div><div class="dl">${it.hist.length} зап. · ${chip}</div></div>
+      ${sparkline(kgs)||''}
+      <div class="kgv">${fmtKg(last)} кг</div>
+    </div>
+    <div class="ph-list" id="${id}" style="display:none">${[...it.hist].reverse().slice(0,6).map(e=>{
+      const dd=new Date(e.d+'T12:00');
+      return `<div class="log-item"><b>${fmtKg(e.kg)} кг</b><span>${dd.getDate()} ${MONTHS[dd.getMonth()].slice(0,3)}</span></div>`;
+    }).join('')}</div>`;
   }).join('');
 }
-function renderProgressT(body){
+function fmtKg(v){ return String(Math.round(v*10)/10).replace('.',','); }
+function togglePH(id){ const el=document.getElementById(id); if(el) el.style.display = el.style.display==='none' ? 'block' : 'none'; haptic(); }
+
+/* дата -> цикл (для старых записей без метки) */
+function dateCycleMap(){
+  const m = {};
+  store.data.history.forEach(h=>{
+    if ((h.prog||'tengo')==='tengo' && h.week && h.week<10) m[h.date] = cycleForWeek(h.week);
+  });
+  return m;
+}
+function cycleExNames(key){
+  const seen=new Set(), out=[];
+  CYCLES[key].workouts.flat().forEach(ex=>{ if(ex.r!==BENCH && !seen.has(ex.n)){ seen.add(ex.n); out.push(ex.n); } });
+  return out;
+}
+/* объём по неделям, последние 8 */
+function weeklyVolCard(){
+  const start = mondayOf(new Date());
+  const weeks=[]; for(let i=7;i>=0;i--) weeks.push(new Date(start.getTime()-i*7*864e5));
+  const vols = weeks.map(ws=>{
+    const a=ws.getTime(), b=a+7*864e5;
+    return store.data.history.filter(h=>{const t=new Date(h.date+'T12:00').getTime(); return t>=a&&t<b;})
+      .reduce((s,h)=>s+h.tonnage,0);
+  });
+  if (!vols.some(v=>v>0)) return '';
+  const max=Math.max(...vols,1), W=320, H=98, bw=26, gap=(W-8*bw)/7;
+  let bars='';
+  vols.forEach((v,i)=>{
+    const h=Math.max(2,Math.round(v/max*(H-20)));
+    const x=i*(bw+gap);
+    bars += `<rect x="${x}" y="${H-16-h}" width="${bw}" height="${h}" rx="5" fill="var(--ink)" opacity="${i===7?1:.3}"/>`
+      + `<text x="${x+bw/2}" y="${H-3}" font-size="9" fill="var(--muted)" text-anchor="middle" font-family="var(--sans)">${String(weeks[i].getDate()).padStart(2,'0')}.${String(weeks[i].getMonth()+1).padStart(2,'0')}</text>`;
+  });
+  return `<div class="card light">
+    <div class="label">объём по неделям</div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+      <div class="big" style="font-size:30px">${fmt(vols[7])}<small>кг</small></div>
+      <div class="hint">эта неделя${vols[6]>0?` · прошлая ${fmt(vols[6])}`:''}</div>
+    </div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${bars}</svg>
+  </div>`;
+}
+/* прогресс рабочих весов: памповый сравнивается с памповым и т.д. */
+function progressByCycles(){
+  const dmap = dateCycleMap();
+  let html='';
+  ['pump','volume','power'].forEach(key=>{
+    const items=[];
+    cycleExNames(key).forEach(n=>{
+      const hist = store.data.exHist[n];
+      if (!hist || !hist.length) return;
+      const ser = hist.filter(e=> (e.c||dmap[e.d])===key );
+      if (ser.length) items.push({name:n, hist:ser});
+    });
+    if (items.length)
+      html += `<div class="card light">
+        <div class="label">${CYCLES[key].name.toLowerCase()} · рабочие веса</div>
+        <div class="hint" style="margin-bottom:4px">дельта считается к прошлому такому же циклу</div>
+        ${renderProgressList(items, key)}
+      </div>`;
+  });
+  if (!html) html = `<div class="card light"><div class="label">рабочие веса</div>
+    <div class="hint">после первых завершённых тренировок здесь появится динамика по каждому циклу — памповый сравнивается с памповым, объёмный с объёмным, силовой с силовым</div></div>`;
+  return html;
+}
+let aTab = 'prog';
+function setATab(t){ aTab=t; haptic(); renderProgram(); }
+function aDateMap(){
+  const m = {};
+  store.data.history.forEach(h=>{ if (h.prog==='aomame') m[h.date] = 'w'+h.workout; });
+  return m;
+}
+function aomameProgressByWorkouts(){
+  const amap = aDateMap();
+  let html = '';
+  AOMAME.forEach((wo,wi)=>{
+    const seen=new Set(), names=[];
+    wo.blocks.forEach(b=>b.ex.forEach(e=>{ if(!seen.has(e.n)){seen.add(e.n);names.push(e.n);} }));
+    const items = [];
+    names.forEach(n=>{
+      const hist = store.data.exHist['a:'+n];
+      if (!hist || !hist.length) return;
+      const ser = hist.filter(e=> (e.c||amap[e.d])==='w'+(wi+1));
+      if (ser.length) items.push({name:n, hist:ser});
+    });
+    if (items.length)
+      html += `<div class="card light">
+        <div class="label">тренировка ${wi+1} · рабочие веса</div>
+        <div class="hint" style="margin-bottom:4px">дельта — к прошлому кругу ротации этой тренировки</div>
+        ${renderProgressList(items, 'aw'+(wi+1))}
+      </div>`;
+  });
+  if (!html) html = `<div class="card light"><div class="label">рабочие веса</div>
+    <div class="hint">после первых завершённых тренировок здесь появится динамика по каждой из трёх тренировок ротации</div></div>`;
+  return html;
+}
+function rmHistoryCard(){
   const rm = store.data.rmHist;
-  let html = journalCard() + `<div class="card light">
-    <div class="label">жим лёжа · история 1ПМ</div>`;
-  if (rm.length){
-    const kgs = rm.map(x=>x.kg);
-    html += `<div style="display:flex;align-items:center;gap:14px;justify-content:space-between">
-      <div class="big" style="font-size:36px">${String(kgs[kgs.length-1]).replace('.',',')}<small>кг</small></div>
+  if (!rm.length) return `<div class="card light"><div class="label">история 1ПМ</div>
+    <div class="hint">появится после первой проходки на неделе 10</div></div>`;
+  const kgs = rm.map(x=>x.kg), d = kgs[kgs.length-1]-kgs[0];
+  return `<div class="card light"><div class="label">история 1ПМ</div>
+    <div style="display:flex;align-items:center;gap:14px;justify-content:space-between">
+      <div><div class="big" style="font-size:34px">${fmtKg(kgs[kgs.length-1])}<small>кг</small></div>
+      <div class="hint">${kgs.length>1?(d>0?'+':d<0?'−':'')+fmtKg(Math.abs(d))+' кг с первой проходки':'первая точка'}</div></div>
       ${sparkline(kgs)||''}
     </div>
     <div class="divider"></div>
-    ${[...rm].reverse().slice(0,10).map(x=>{
-      const d=new Date(x.d);
-      return `<div class="log-item"><b>${String(x.kg).replace('.',',')} кг</b><span>${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)} ${d.getFullYear()}</span></div>`;
-    }).join('')}`;
-  } else {
-    html += `<div class="big" style="font-size:36px">${store.data.benchRM}<small>кг</small></div>
-    <div class="hint">история появится после первой проходки на неделе 10</div>`;
-  }
-  html += `</div>
-  <div class="card light">
-    <div class="label">рабочие веса · динамика</div>
-    ${renderProgressList(progressItems(''))}
-  </div>
-  <button class="btn ghost" onclick="exportData()">Экспортировать данные</button>
-  <div class="hint" style="text-align:center;margin-top:8px">полный бэкап в JSON — скопируется в буфер обмена</div>`;
-  body.innerHTML = html;
+    ${[...rm].reverse().slice(0,8).map(x=>{const dd=new Date(x.d+'T12:00');
+      return `<div class="log-item"><b>${fmtKg(x.kg)} кг</b><span>${dd.getDate()} ${MONTHS[dd.getMonth()].slice(0,3)} ${dd.getFullYear()}</span></div>`;}).join('')}
+  </div>`;
 }
-
+function renderProgressT(body){
+  body.innerHTML = weeklyVolCard()
+    + progressByCycles()
+    + journalCard()
+    + `<button class="btn ghost" onclick="exportData()">Экспортировать данные</button>
+       <div class="hint" style="text-align:center;margin-top:8px">полный бэкап в JSON — скопируется в буфер обмена</div>`;
+}
 function renderProgram(){
   const body = $('#prog-body');
   if (store.data.program==='aomame'){
     $('#prog-seg').style.display = 'none';
     $('#tengo-pos').style.display = 'none';
-    let html = `<div class="hint" style="margin-bottom:12px">ротация Т1 → Т2 → Т3 → Т1 · 4 круга в каждом блоке · веса сохраняются и подставляются в тренировку</div>` + journalCard();
+    let html = `<div class="seg" style="margin-bottom:14px">
+      <button class="${aTab==='prog'?'on':''}" onclick="setATab('prog')">Программа</button>
+      <button class="${aTab==='progress'?'on':''}" onclick="setATab('progress')">Прогресс</button>
+    </div>`;
+
+    if (aTab==='progress'){
+      html += weeklyVolCard()
+        + aomameProgressByWorkouts()
+        + journalCard()
+        + `<button class="btn ghost" onclick="exportData()">Экспортировать данные</button>
+           <div class="hint" style="text-align:center;margin-top:8px">полный бэкап в JSON — скопируется в буфер обмена</div>`;
+      body.innerHTML = html;
+      return;
+    }
+
+    html += `<div class="hint" style="margin-bottom:12px">ротация Т1 → Т2 → Т3 → Т1 · 4 круга в каждом блоке · веса сохраняются и подставляются в тренировку</div>`;
     AOMAME.forEach((wo,wi)=>{
       html += `<div class="card light"><div class="label">тренировка ${wi+1}${wi+1===store.data.aWorkout?' · следующая':''}</div><table>
         <tr><th>упражнение</th><th style="text-align:right">повт.</th><th style="text-align:right">кг</th></tr>`;
@@ -1211,11 +1569,6 @@ function renderProgram(){
       html += `</table><div class="hint" style="margin-top:8px">заминка: ${wo.cooldown.join(' · ')}</div></div>`;
     });
     html += `<div class="card light">
-      <div class="label">прогресс · рабочие веса</div>
-      ${renderProgressList(progressItems('a:'))}
-    </div>
-    <button class="btn ghost" style="margin-bottom:14px" onclick="exportData()">Экспортировать данные</button>
-    <div class="card light">
       <div class="label">позиция в ротации</div>
       <div class="inline" style="margin-bottom:10px">
         <select id="a-set-workout">
@@ -1229,6 +1582,7 @@ function renderProgram(){
     return;
   }
   $('#prog-seg').style.display = '';
+  $('#tengo-pos').style.display = '';  $('#prog-seg').style.display = '';
   $('#tengo-pos').style.display = '';
   // селекторы позиции
   const wSel = $('#set-week');
@@ -1239,8 +1593,11 @@ function renderProgram(){
 
   if (progCurrent==='bench'){ renderBench(body); return; }
   if (progCurrent==='progress'){ renderProgressT(body); return; }
-  const cyc = CYCLES[progCurrent];
-  let html = `<div class="hint" style="margin-bottom:12px">недели ${cyc.weeks.join(', ')} · подходов: 3 → 4 → 5 по кругам цикла · рабочие веса сохраняются и подставляются в тренировку</div>`;
+  /* таб «Циклы»: все три микроцикла, внутренний переключатель */
+  const cyc = CYCLES[cycCurrent];
+  let html = `<div class="seg" style="margin-bottom:14px">${['pump','volume','power'].map(k=>
+      `<button class="${k===cycCurrent?'on':''}" onclick="setCyc('${k}')">${CYCLES[k].name}</button>`).join('')}</div>
+  <div class="hint" style="margin-bottom:12px">недели ${cyc.weeks.join(', ')} · подходов: 3 → 4 → 5 по кругам цикла · рабочие веса сохраняются и подставляются в тренировку</div>`;
   cyc.workouts.forEach((exs,wi)=>{
     html += `<div class="card light"><div class="label">тренировка ${wi+1}</div><table>
       <tr><th>упражнение</th><th style="text-align:right">повт.</th><th style="text-align:right">кг</th></tr>`;
@@ -1271,6 +1628,7 @@ function renderBench(body){
     </div>
     <div class="hint">все проценты и вся программа ниже считаются от этого числа, округление до 2,5 кг</div>
   </div>
+  ${rmHistoryCard()}
   <div class="card light">
     <div class="label">таблица процентов</div>
     <table><tr><th>%</th><th style="text-align:right">кг</th><th style="width:24px"></th><th>%</th><th style="text-align:right">кг</th></tr>`;
@@ -1411,7 +1769,7 @@ function journalCard(){
       <div><b style="font-size:14px">${describeH(h)}</b><div class="hint" style="margin-top:2px">${fmtDateRu(h.date)}</div></div>
       <span class="nw" style="color:var(--muted)">${fmt(h.tonnage)} кг ›</span>
     </div>`).join('');
-  return `<div class="card light"><div class="label">журнал тренировок · нажми, чтобы открыть</div>${rows}
+  return `<div class="card light"><div class="label">журнал · нажми — откроется сводка тренировки</div>${rows}
     ${H.length>20?`<div class="hint" style="margin-top:8px">показаны последние 20 из ${H.length}</div>`:''}</div>`;
 }
 function openDay(iso){
@@ -1428,16 +1786,71 @@ let histDelArm = 0;
 function openHistory(i){
   const h = store.data.history[i]; if (!h) return;
   histDelArm = 0;
+  if (h.week===10){
+    openModal(`<div class="label">проходка</div>
+      <div class="big">${fmt(h.tonnage)}<small>кг</small></div>
+      <div class="hint">новый 1ПМ жима лёжа · ${fmtDateRu(h.date)}</div>
+      ${editBlock(i,h)}`);
+    return;
+  }
+  const prog = h.prog||'tengo';
+  /* дельта к предыдущей такой же тренировке (до этой записи) */
+  let prev = null;
+  for (let j=i-1;j>=0;j--){
+    const x = store.data.history[j];
+    if ((x.prog||'tengo')===prog && x.workout===h.workout && x.week!==10){ prev = x.tonnage; break; }
+  }
+  let best = prev!==null;
+  store.data.history.forEach((x,j)=>{
+    if (j!==i && (x.prog||'tengo')===prog && x.workout===h.workout && x.week!==10 && x.tonnage>=h.tonnage) best=false;
+  });
+  const d = prev===null ? null : h.tonnage-prev;
+  const delta = d===null ? ''
+    : d===0 ? '<div class="hint" style="margin-top:6px">ровно как в прошлый раз</div>'
+    : `<div class="delta ${d>0?'up':''}">${d>0?'+':'−'}${fmt(Math.abs(d))} кг к прошлой такой же</div>`;
+  /* веса в этот день */
+  const wanted = prog==='tengo'
+    ? new Set(CYCLES[cycleForWeek(h.week)].workouts[h.workout-1].filter(e=>e.r!==BENCH).map(e=>e.n))
+    : null;
+  const kw = [];
+  for (const k in store.data.exHist){
+    const isA = k.startsWith('a:');
+    if ((prog==='aomame') !== isA) continue;
+    const nm = isA ? k.slice(2) : k;
+    if (wanted && !wanted.has(nm)) continue;
+    const e = store.data.exHist[k].find(x=>x.d===h.date);
+    if (e && e.kg>0) kw.push(`<div class="log-item"><span style="font-size:13px">${nm}</span><b class="nw">${fmtKg(e.kg)} кг</b></div>`);
+  }
+  let benchRow = '';
+  if (prog==='tengo' && (h.workout===1 || h.workout===3)){
+    const sIdx = benchSession(h.week, h.workout);
+    const parts = BENCH_PROGRAM[sIdx-1];
+    const rm = h.rm || store.data.benchRM;
+    const tops = parts.filter(p=>p.p && !p.hold).map(p=>round25(rm*p.p/100));
+    if (tops.length)
+      benchRow = `<div class="log-item"><span style="font-size:13px">Жим лёжа · сессия ${sIdx}</span><b class="nw">верх ${Math.max(...tops)} кг</b></div>`;
+  }
   openModal(`
     <div class="label">${describeH(h)}</div>
-    <div class="label" style="margin-top:16px">дата</div>
-    <input type="date" id="eh-date" value="${h.date}" max="${todayISO()}">
-    <div class="label" style="margin-top:12px">тоннаж, кг</div>
-    <input type="number" id="eh-ton" inputmode="numeric" value="${h.tonnage}">
-    ${h.week===10?'<div class="hint" style="margin-top:8px">это запись проходки в журнале; сам 1ПМ меняется на неделе 10</div>':''}
-    <button class="btn" style="margin-top:18px" onclick="saveHistoryEdit(${i})">Сохранить</button>
-    <button class="btn ghost" style="margin-top:10px" id="eh-del" onclick="deleteHistory(${i})">Удалить запись</button>
-    <button class="btn ghost" style="margin-top:10px" onclick="closeModal()">Закрыть</button>`);
+    ${best?'<div style="margin-top:8px"><span class="tag dark">рекорд тоннажа</span></div>':''}
+    <div class="big">${fmt(h.tonnage)}<small>кг</small></div>
+    <div class="hint">${fmtDateRu(h.date)}${h.mins?` · ~${h.mins} мин`:''}</div>
+    ${delta}
+    ${(benchRow||kw.length)?`<div class="label" style="margin-top:18px">веса в этот день</div>${benchRow}${kw.join('')}`:''}
+    ${editBlock(i,h)}`);
+}
+function editBlock(i,h){
+  return `<button class="btn ghost" style="margin-top:18px"
+      onclick="const b=document.getElementById('eh-edit');b.style.display=b.style.display==='none'?'block':'none'">Изменить</button>
+    <div id="eh-edit" style="display:none">
+      <div class="label" style="margin-top:12px">дата</div>
+      <input type="date" id="eh-date" value="${h.date}" max="${todayISO()}">
+      <div class="label" style="margin-top:10px">тоннаж, кг</div>
+      <input type="number" id="eh-ton" inputmode="numeric" value="${h.tonnage}">
+      <button class="btn" style="margin-top:14px" onclick="saveHistoryEdit(${i})">Сохранить</button>
+      <button class="btn ghost" style="margin-top:10px" id="eh-del" onclick="deleteHistory(${i})">Удалить запись</button>
+    </div>
+    <button class="btn ghost" style="margin-top:10px" onclick="closeModal()">Закрыть</button>`;
 }
 function afterHistoryChange(){
   store.data.history.sort((a,b)=>a.date.localeCompare(b.date));
@@ -1468,7 +1881,9 @@ function deleteHistory(i){
 }
 
 /* ============ СТАРТ ============ */
-store.load().then(()=>{ applyTheme(store.data.theme||'light'); renderHome(); });
+applyTheme(store.data.theme||'light');
+renderHome();
+store.load(()=>{ applyTheme(store.data.theme||'light'); rerenderActive(); });
 </script>
 </body>
 </html>
