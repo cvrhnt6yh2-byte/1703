@@ -229,13 +229,20 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
 .modal-card .delta{font-weight:700;font-size:13px;margin-top:6px}
 .modal-card .delta.up{color:var(--ok)}
 .modal-card .big{margin-top:8px}
-.ew-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
-.ew-name{flex:1;font-size:13.5px;line-height:1.3}
-.ew-in{width:78px;flex:none;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 4px;color:var(--ink);font-family:var(--sans);font-size:15px;text-align:center;box-sizing:border-box}
-.ew-in.fr{width:66px}
-.ew-bench{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--muted)}
-.ew-total{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding:12px 14px;background:var(--card);border-radius:12px}
-.ew-total b{font-family:var(--serif);font-size:22px}
+.ew-list{margin-top:4px}
+.ew-head,.ew-row{display:grid;grid-template-columns:minmax(0,1fr) 62px 84px;gap:10px;align-items:center}
+.ew-head{padding-bottom:6px;font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.ew-head span{text-align:center}
+.ew-row{padding:7px 0;border-bottom:1px solid var(--line)}
+.ew-name{min-width:0;font-size:13.5px;line-height:1.3;overflow-wrap:anywhere}
+.ew-name small{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
+/* перебиваем общее правило .modal-card input (оно шире по специфичности) */
+.modal-card .ew-in{width:100%;margin-top:0;padding:10px 2px;font-size:15px;text-align:center;border-radius:10px;box-sizing:border-box}
+.ew-bench{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted)}
+.ew-bench b{font-weight:400;text-align:right;flex:none}
+.ew-total{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:16px;padding:13px 15px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.ew-total b{font-family:var(--serif);font-size:22px;white-space:nowrap}
+.ew-total .dchip{margin-left:6px}
 .modal-back.show{animation:fadeb .2s ease}
 @keyframes fadeb{from{opacity:0}}
 .jrow{display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer}
@@ -2010,23 +2017,23 @@ function usedWeight(prog, name, date, cyc){
 function ewRow(name, val, idx, failVal){
   const fr = idx!=null
     ? `<input type="number" inputmode="numeric" min="0" class="ew-in fr" id="ehfr-${idx}"
-        value="${failVal!=null?failVal:''}" placeholder="повт." oninput="ewPreview()">`
-    : '';
+        value="${failVal!=null?failVal:''}" placeholder="—" oninput="ewPreview()">`
+    : '<span></span>';
   return `<div class="ew-row">
-    <span class="ew-name">${name}${idx!=null?'<br><span style="font-size:11px;color:var(--muted)">до отказа</span>':''}</span>
+    <div class="ew-name">${name}${idx!=null?'<small>до отказа</small>':''}</div>
     ${fr}
     <input type="number" inputmode="decimal" step="0.5" class="ew-in" data-ex="${encodeURIComponent(name)}"
-      value="${val!=null&&val!==''?val:''}" placeholder="кг" oninput="ewPreview()">
+      value="${val!=null&&val!==''?val:''}" placeholder="—" oninput="ewPreview()">
   </div>`;
 }
 function editWeightsRows(h){
   const prog = h.prog||'tengo';
-  let rows = '';
+  let rows = '<div class="ew-head"><span></span><span>повт.</span><span>кг</span></div>';
   if (prog==='tengo' && h.week && h.week<10){
     const key = cycleForWeek(h.week);
     CYCLES[key].workouts[h.workout-1].forEach((ex,i)=>{
       if (ex.r===BENCH){
-        rows += `<div class="ew-bench"><span>${ex.n}</span><span class="nw">по программе · 1ПМ ${h.rm||store.data.benchRM} кг</span></div>`;
+        rows += `<div class="ew-bench"><span>${ex.n}</span><b>по программе<br>1ПМ ${h.rm||store.data.benchRM} кг</b></div>`;
       } else {
         const isFail = repsFor(ex,h.week)===FAIL;
         rows += ewRow(ex.n, usedWeight(prog, ex.n, h.date, key), isFail?i:null, h.fr && h.fr[i]);
@@ -2039,7 +2046,7 @@ function editWeightsRows(h){
       rows += ewRow(ex.n, usedWeight(prog, ex.n, h.date), null);
     }));
   }
-  return rows;
+  return `<div class="ew-list">${rows}</div>`;
 }
 function editBlock(i,h){
   const dateFld = `<div class="label" style="margin-top:12px">дата</div>
@@ -2053,11 +2060,12 @@ function editBlock(i,h){
       + `<div class="label" style="margin-top:16px">рабочие веса</div>
          <div class="hint" style="margin-bottom:4px">поправь веса — тоннаж пересчитается сам</div>`
       + editWeightsRows(h)
-      + `<div class="ew-total"><span class="hint">новый тоннаж</span><b id="eh-newton">${fmt(h.tonnage)} кг</b></div>`;
+      + `<div class="ew-total"><span class="hint">новый тоннаж</span>
+           <span><b id="eh-newton">${fmt(h.tonnage)} кг</b><span id="eh-delta"></span></span></div>`;
   }
   return `<button class="btn ghost" style="margin-top:18px"
       onclick="const b=document.getElementById('eh-edit');b.style.display=b.style.display==='none'?'block':'none'">Изменить</button>
-    <div id="eh-edit" style="display:none" data-i="${i}">
+    <div id="eh-edit" style="display:none" data-i="${i}" data-t0="${h.tonnage}">
       ${inner}
       <button class="btn" style="margin-top:16px" onclick="saveHistoryEdit(${i})">Сохранить</button>
       <button class="btn ghost" style="margin-top:10px" id="eh-del" onclick="deleteHistory(${i})">Удалить запись</button>
@@ -2087,6 +2095,13 @@ function ewPreview(){
     : tengoTonnage(h.week, h.workout, weights, fr, h.rm);
   const el = document.getElementById('eh-newton');
   if (el) el.textContent = fmt(t)+' кг';
+  const dEl = document.getElementById('eh-delta');
+  if (dEl){
+    const t0 = parseFloat(box.dataset.t0)||0;
+    const diff = t - t0;
+    dEl.innerHTML = diff===0 ? ''
+      : `<span class="dchip ${diff>0?'up':'down'}">${diff>0?'+':'−'}${fmt(Math.abs(diff))}</span>`;
+  }
 }
 function afterHistoryChange(){
   store.data.history.sort((a,b)=>a.date.localeCompare(b.date));
