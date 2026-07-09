@@ -98,8 +98,22 @@ h1{font-family:var(--serif);font-weight:400;font-size:34px;line-height:1.1;lette
 input[type=number],input[type=date],select{
   width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r-sm);
   background:var(--card-2);color:var(--ink);font-family:var(--sans);font-size:16px;outline:none;
+  min-width:0;max-width:100%;
 }
 input:focus,select:focus{border-color:var(--ink)}
+/* iOS/WebKit даёт полю даты собственную минимальную ширину, из-за неё оно вылезает
+   за карточку. Снимаем системный вид и распрямляем внутренние блоки значения. */
+input[type=date]{
+  -webkit-appearance:none;appearance:none;
+  display:block;min-width:0;max-width:100%;
+  text-align:left;
+}
+input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0;min-width:0}
+input[type=date]::-webkit-datetime-edit{padding:0;min-width:0}
+input[type=date]::-webkit-datetime-edit-fields-wrapper{padding:0}
+input[type=date]::-webkit-calendar-picker-indicator{margin:0 0 0 auto;opacity:.55}
+/* элементы в строке не должны распирать её содержимым */
+.inline > *{min-width:0}
 .btn{display:block;width:100%;padding:15px;border:none;border-radius:999px;background:var(--ink);color:var(--bg);font-family:var(--sans);font-weight:700;font-size:15px;cursor:pointer}
 .btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--ink)}
 .btn:disabled{opacity:.4}
@@ -250,7 +264,8 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
 .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:60;padding:14px;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
 .modal-back.show{display:flex}
 .modal-card{background:var(--card-2);border-radius:20px;padding:20px;width:100%;max-width:480px;max-height:80dvh;overflow-y:auto;border:1px solid var(--line)}
-.modal-card input{width:100%;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--ink);font-family:var(--sans);font-size:16px;margin-top:6px;box-sizing:border-box}
+.modal-card input{width:100%;max-width:100%;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--ink);font-family:var(--sans);font-size:16px;margin-top:6px;box-sizing:border-box}
+.modal-card input[type=date]{display:block;width:100%;max-width:100%;text-align:left}
 </style>
 </head>
 <body>
