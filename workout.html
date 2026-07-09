@@ -229,7 +229,15 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
 .modal-card .delta{font-weight:700;font-size:13px;margin-top:6px}
 .modal-card .delta.up{color:var(--ok)}
 .modal-card .big{margin-top:8px}
-.cal-cell.done{cursor:pointer}
+.ew-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.ew-name{flex:1;font-size:13.5px;line-height:1.3}
+.ew-in{width:78px;flex:none;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 4px;color:var(--ink);font-family:var(--sans);font-size:15px;text-align:center;box-sizing:border-box}
+.ew-in.fr{width:66px}
+.ew-bench{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--muted)}
+.ew-total{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding:12px 14px;background:var(--card);border-radius:12px}
+.ew-total b{font-family:var(--serif);font-size:22px}
+.modal-back.show{animation:fadeb .2s ease}
+@keyframes fadeb{from{opacity:0}}
 .jrow{display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer}
 .jrow:active{opacity:.65}
 .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:60;padding:14px;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
@@ -756,7 +764,7 @@ function exportData(){
   if (navigator.clipboard && navigator.clipboard.writeText)
     navigator.clipboard.writeText(json).then(ok, fb);
   else fb();
-  if (!tg){
+  if (!tg && window.URL && URL.createObjectURL){
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([json], {type:'application/json'}));
     a.download = `1703-backup-${todayISO()}.json`;
@@ -1198,7 +1206,7 @@ function renderWorkout(){
     } else {
       const reps = repsFor(ex,w);
       const isFail = reps===FAIL;
-      const saved = store.data.workWeights[ex.n] ?? '';
+      const saved = getWW(ex.n, key) ?? '';
       html += `<div class="ex">
         <div class="ex-head">
           <div class="ex-name">${ex.n}</div>
@@ -1206,7 +1214,7 @@ function renderWorkout(){
         </div>
         <div class="ex-controls">
           <input type="number" inputmode="decimal" step="0.5" placeholder="кг" value="${saved}"
-                 onchange="setWW('${ex.n.replace(/'/g,"\\'")}', this.value)">
+                 onchange="setWW('${ex.n.replace(/'/g,"\\'")}', this.value, '${key}')">
           ${isFail?`<input type="number" inputmode="numeric" placeholder="повт." style="max-width:90px" id="fail-reps-${i}" oninput="saveSession()">`:''}
         </div>
         ${renderSets(i, sets)}
@@ -1236,9 +1244,17 @@ function toggleSet(e,s,btn,rest){
   saveSession();
   haptic();
 }
-function setWW(name, val){
+/* Рабочие веса Tengo хранятся отдельно для каждого микроцикла: ключ "pump:Название".
+   Старые записи без префикса остаются запасным значением, пока цикл не переопределён. */
+function getWW(name, cyc){
+  const ww = store.data.workWeights;
+  const k = cyc ? cyc+':'+name : null;
+  if (k && ww[k] !== undefined) return ww[k];
+  return ww[name];
+}
+function setWW(name, val, cyc){
   const v = parseFloat(String(val).replace(',','.'));
-  if (v>=0) { store.data.workWeights[name]=v; store.save(); }
+  if (v>=0) { store.data.workWeights[cyc ? cyc+':'+name : name] = v; store.save(); }
 }
 
 function recordExHist(key, kg, c, dISO){
@@ -1289,33 +1305,57 @@ function showSummary(tonnage, workoutNum, prev, isRecord, dateISO){
   window.scrollTo(0,0);
 }
 
+/* Тоннаж тренировки Tengo из набора весов. weights: {название: кг},
+   failReps: {индекс упражнения: повторы}, rm — 1ПМ на момент тренировки. */
+function tengoTonnage(w, n, weights, failReps, rm){
+  const key = cycleForWeek(w), cyc = CYCLES[key], sets = setsForWeek(w);
+  const useRM = rm || store.data.benchRM;
+  let tonnage = 0;
+  cyc.workouts[n-1].forEach((ex,i)=>{
+    if (ex.r===BENCH){
+      const parts = BENCH_PROGRAM[benchSession(w,n)-1];
+      parts.forEach(p=>{ if(!p.hold && p.p) tonnage += round25(useRM*p.p/100)*p.r*p.s; });
+    } else {
+      const kg = weights[ex.n] || 0;
+      let reps = repsFor(ex,w);
+      if (reps===FAIL) reps = (failReps && failReps[i]>0) ? failReps[i] : 0;
+      tonnage += kg*reps*sets;
+    }
+  });
+  return Math.round(tonnage);
+}
+function aomameTonnage(n, weights){
+  let tonnage = 0;
+  AOMAME[n-1].blocks.forEach(b=>b.ex.forEach(e=>{
+    const kg = weights[e.n] !== undefined ? weights[e.n] : (e.def||0);
+    tonnage += kg * e.reps * b.rounds;
+  }));
+  return Math.round(tonnage);
+}
 function finishWorkout(dateISO){
   takeUndoSnap();
   const D = dateISO || todayISO();
   const v = woView ?? {week:store.data.week, workout:store.data.workout};
   const w = v.week, n = v.workout;
-  const key = cycleForWeek(w), cyc = CYCLES[key], sets = setsForWeek(w);
-  let tonnage = 0;
+  const key = cycleForWeek(w), cyc = CYCLES[key];
+  const weights = {}, frObj = {};
   cyc.workouts[n-1].forEach((ex,i)=>{
-    if (ex.r===BENCH){
-      const parts = BENCH_PROGRAM[benchSession(w,n)-1];
-      parts.forEach(p=>{ if(!p.hold && p.p) tonnage += benchKg(p.p)*p.r*p.s; });
-    } else {
-      const kg = store.data.workWeights[ex.n]||0;
-      let reps = repsFor(ex,w);
-      if (reps===FAIL){
-        const el = document.getElementById('fail-reps-'+i);
-        reps = el && parseInt(el.value)>0 ? parseInt(el.value) : 0;
-      }
-      tonnage += kg*reps*sets;
-      recordExHist(ex.n, kg, key, D);
+    if (ex.r===BENCH) return;
+    const kg = getWW(ex.n, key) || 0;
+    weights[ex.n] = kg;
+    if (repsFor(ex,w)===FAIL){
+      const el = document.getElementById('fail-reps-'+i);
+      const r = el && parseInt(el.value)>0 ? parseInt(el.value) : 0;
+      if (r>0) frObj[i] = r;
     }
+    recordExHist(ex.n, kg, key, D);
   });
-  tonnage = Math.round(tonnage);
+  const tonnage = tengoTonnage(w, n, weights, frObj, store.data.benchRM);
   const prev = prevTonnage('tengo', n);
   const best = maxTonnage('tengo', n);
   const mins = woStartTs ? Math.round((Date.now()-woStartTs)/60000) : 0;
-  store.data.history.push({date:D, week:w, workout:n, tonnage, mins, rm:store.data.benchRM});
+  store.data.history.push({date:D, week:w, workout:n, tonnage, mins, rm:store.data.benchRM,
+    fr: Object.keys(frObj).length ? frObj : undefined});
   store.data.history.sort((a,b)=>a.date.localeCompare(b.date));
   if (store.data.history.length>300) store.data.history = store.data.history.slice(-300);
   // продвижение по циклу
@@ -1378,14 +1418,7 @@ function finishAomame(dateISO){
   const D = dateISO || todayISO();
   const n = aView ?? store.data.aWorkout;
   const wo = AOMAME[n-1];
-  let tonnage = 0;
-  wo.blocks.forEach(b=>{
-    b.ex.forEach(e=>{
-      const kg = store.data.aWeights[e.n] !== undefined ? store.data.aWeights[e.n] : (e.def||0);
-      tonnage += kg * e.reps * b.rounds;
-    });
-  });
-  tonnage = Math.round(tonnage);
+  const tonnage = aomameTonnage(n, store.data.aWeights);
   wo.blocks.forEach(b=>b.ex.forEach(e=>{
     const kg = store.data.aWeights[e.n] !== undefined ? store.data.aWeights[e.n] : (e.def||0);
     recordExHist('a:'+e.n, kg, 'w'+n, D);
@@ -1434,17 +1467,6 @@ function progTab(key, btn){
   document.querySelectorAll('#prog-seg button').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
   renderProgram();
-}
-function progressItems(prefix){
-  const out = [];
-  for (const k in store.data.exHist){
-    const isA = k.startsWith('a:');
-    if ((prefix==='a:') !== isA) continue;
-    const h = store.data.exHist[k];
-    if (!h.length) continue;
-    out.push({name: isA ? k.slice(2) : k, hist: h});
-  }
-  return out;
 }
 function renderProgressList(items, idp){
   if (!items.length) return '<div class="hint">Здесь появятся графики рабочих весов — после первых завершённых тренировок.</div>';
@@ -1511,6 +1533,69 @@ function weeklyVolCard(){
   </div>`;
 }
 /* прогресс рабочих весов: памповый сравнивается с памповым и т.д. */
+/* дата -> неделя (только Tengo, недели 1..9) */
+function dateWeekMap(){
+  const m = {};
+  store.data.history.forEach(h=>{
+    if ((h.prog||'tengo')==='tengo' && h.week && h.week<10) m[h.date] = h.week;
+  });
+  return m;
+}
+/* Для цикла: по каждому его проходу (неделе) — суммарный рабочий вес упражнений цикла.
+   Показывает рост весов внутри одного цикла: неделя 1 -> 4 -> 7 для пампового и т.д. */
+function cyclePasses(key){
+  const dw = dateWeekMap(), dmap = dateCycleMap();
+  const passes = {};
+  cycleExNames(key).forEach(nm=>{
+    (store.data.exHist[nm]||[]).forEach(e=>{
+      if ((e.c||dmap[e.d]) !== key) return;
+      const wk = dw[e.d]; if (!wk) return;
+      const p = passes[wk] || (passes[wk] = {sum:0, seen:new Set()});
+      if (!p.seen.has(nm)){ p.sum += e.kg; p.seen.add(nm); }
+    });
+  });
+  return Object.keys(passes).map(Number).sort((a,b)=>a-b)
+    .map(wk=>({wk, sum:passes[wk].sum, n:passes[wk].seen.size}));
+}
+let wgCycle = 'pump';
+function setWgCycle(k){ wgCycle=k; haptic(); renderProgram(); }
+function weightGrowthCard(){
+  const seg = `<div class="seg" style="margin:10px 0 14px">${['pump','volume','power'].map(k=>
+    `<button class="${k===wgCycle?'on':''}" onclick="setWgCycle('${k}')">${CYCLES[k].name}</button>`).join('')}</div>`;
+  const passes = cyclePasses(wgCycle);
+  let bodyHtml;
+  if (passes.length < 1){
+    bodyHtml = `<div class="hint">Пока нет завершённых тренировок этого цикла. После первого прохода здесь появится сумма рабочих весов, после второго — рост.</div>`;
+  } else {
+    const last = passes[passes.length-1], first = passes[0];
+    const d = passes.length>1 ? last.sum-first.sum : null;
+    const max = Math.max(...passes.map(p=>p.sum), 1);
+    const W=320, H=104, bw=Math.min(52, (W-20)/Math.max(passes.length,1) - 10), gap=12;
+    const totalW = passes.length*bw + (passes.length-1)*gap;
+    const x0 = (W-totalW)/2;
+    let bars='';
+    passes.forEach((p,i)=>{
+      const hgt = Math.max(3, Math.round(p.sum/max*(H-30)));
+      const x = x0 + i*(bw+gap);
+      bars += `<rect x="${x}" y="${H-18-hgt}" width="${bw}" height="${hgt}" rx="5" fill="var(--ink)" opacity="${i===passes.length-1?1:.32}"/>`
+        + `<text x="${x+bw/2}" y="${H-22-hgt}" font-size="10" fill="var(--muted)" text-anchor="middle" font-family="var(--sans)">${fmtKg(p.sum)}</text>`
+        + `<text x="${x+bw/2}" y="${H-4}" font-size="9.5" fill="var(--muted)" text-anchor="middle" font-family="var(--sans)">нед. ${p.wk}</text>`;
+    });
+    const chip = d===null ? '<span class="hint">первый проход цикла</span>'
+      : d===0 ? '<span class="hint">веса не изменились</span>'
+      : `<span class="dchip ${d>0?'up':'down'}">${d>0?'+':'−'}${fmtKg(Math.abs(d))} кг к первому проходу</span>`;
+    bodyHtml = `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px">
+        <div class="big" style="font-size:30px">${fmtKg(last.sum)}<small>кг</small></div>
+        <div style="text-align:right">${chip}</div>
+      </div>
+      <div class="hint" style="margin-bottom:6px">сумма рабочих весов · ${last.n} упр. в неделю ${last.wk}</div>
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${bars}</svg>`;
+  }
+  return `<div class="card light">
+    <div class="label">рост рабочих весов по циклам</div>
+    ${seg}${bodyHtml}
+  </div>`;
+}
 function progressByCycles(){
   const dmap = dateCycleMap();
   let html='';
@@ -1582,6 +1667,7 @@ function rmHistoryCard(){
 }
 function renderProgressT(body){
   body.innerHTML = weeklyVolCard()
+    + weightGrowthCard()
     + progressByCycles()
     + journalCard()
     + `<button class="btn ghost" onclick="exportData()">Экспортировать данные</button>
@@ -1637,7 +1723,7 @@ function renderProgram(){
   }
   $('#prog-seg').style.display = '';
   $('#tengo-pos').style.display = '';  $('#prog-seg').style.display = '';
-  $('#tengo-pos').style.display = '';
+  $('#tengo-pos').style.display = progCurrent==='cycles' ? '' : 'none';
   // селекторы позиции
   const wSel = $('#set-week');
   if (!wSel.options.length){
@@ -1651,7 +1737,7 @@ function renderProgram(){
   const cyc = CYCLES[cycCurrent];
   let html = `<div class="seg" style="margin-bottom:14px">${['pump','volume','power'].map(k=>
       `<button class="${k===cycCurrent?'on':''}" onclick="setCyc('${k}')">${CYCLES[k].name}</button>`).join('')}</div>
-  <div class="hint" style="margin-bottom:12px">недели ${cyc.weeks.join(', ')} · подходов: 3 → 4 → 5 по кругам цикла · рабочие веса сохраняются и подставляются в тренировку</div>`;
+  <div class="hint" style="margin-bottom:12px">недели ${cyc.weeks.join(', ')} · подходов: 3 → 4 → 5 по кругам цикла · веса задаются отдельно для каждого микроцикла</div>`;
   cyc.workouts.forEach((exs,wi)=>{
     html += `<div class="card light"><div class="label">тренировка ${wi+1}</div><table>
       <tr><th>упражнение</th><th style="text-align:right">повт.</th><th style="text-align:right">кг</th></tr>`;
@@ -1659,8 +1745,8 @@ function renderProgram(){
       const reps = ex.r===BENCH ? 'программа' : Array.isArray(ex.r) ? ex.r.join('/') : ex.r;
       const kg = ex.r===BENCH ? '' :
         `<input type="number" inputmode="decimal" step="0.5" class="kg-in"
-          value="${store.data.workWeights[ex.n] ?? ''}" placeholder="—"
-          onchange="setWW('${ex.n.replace(/'/g,"\\'")}', this.value)">`;
+          value="${getWW(ex.n, cycCurrent) ?? ''}" placeholder="—"
+          onchange="setWW('${ex.n.replace(/'/g,"\\'")}', this.value, '${cycCurrent}')">`;
       html += `<tr><td>${ex.n}</td><td class="serif nw" style="text-align:right">${reps}</td><td class="nw" style="text-align:right">${kg}</td></tr>`;
     });
     html += `</table></div>`;
@@ -1912,18 +1998,95 @@ function openHistory(i){
     ${(benchRow||kw.length)?`<div class="label" style="margin-top:18px">веса в этот день</div>${benchRow}${kw.join('')}`:''}
     ${editBlock(i,h)}`);
 }
+/* вес упражнения, записанный в этот день (иначе — текущий рабочий) */
+function usedWeight(prog, name, date, cyc){
+  const k = prog==='aomame' ? 'a:'+name : name;
+  const arr = store.data.exHist[k];
+  const e = arr && arr.find(x=>x.d===date);
+  if (e) return e.kg;
+  if (prog==='aomame') return store.data.aWeights[name];
+  return getWW(name, cyc);
+}
+function ewRow(name, val, idx, failVal){
+  const fr = idx!=null
+    ? `<input type="number" inputmode="numeric" min="0" class="ew-in fr" id="ehfr-${idx}"
+        value="${failVal!=null?failVal:''}" placeholder="повт." oninput="ewPreview()">`
+    : '';
+  return `<div class="ew-row">
+    <span class="ew-name">${name}${idx!=null?'<br><span style="font-size:11px;color:var(--muted)">до отказа</span>':''}</span>
+    ${fr}
+    <input type="number" inputmode="decimal" step="0.5" class="ew-in" data-ex="${encodeURIComponent(name)}"
+      value="${val!=null&&val!==''?val:''}" placeholder="кг" oninput="ewPreview()">
+  </div>`;
+}
+function editWeightsRows(h){
+  const prog = h.prog||'tengo';
+  let rows = '';
+  if (prog==='tengo' && h.week && h.week<10){
+    const key = cycleForWeek(h.week);
+    CYCLES[key].workouts[h.workout-1].forEach((ex,i)=>{
+      if (ex.r===BENCH){
+        rows += `<div class="ew-bench"><span>${ex.n}</span><span class="nw">по программе · 1ПМ ${h.rm||store.data.benchRM} кг</span></div>`;
+      } else {
+        const isFail = repsFor(ex,h.week)===FAIL;
+        rows += ewRow(ex.n, usedWeight(prog, ex.n, h.date, key), isFail?i:null, h.fr && h.fr[i]);
+      }
+    });
+  } else if (prog==='aomame' && AOMAME[h.workout-1]){
+    const seen = new Set();
+    AOMAME[h.workout-1].blocks.forEach(b=>b.ex.forEach(ex=>{
+      if (seen.has(ex.n)) return; seen.add(ex.n);
+      rows += ewRow(ex.n, usedWeight(prog, ex.n, h.date), null);
+    }));
+  }
+  return rows;
+}
 function editBlock(i,h){
+  const dateFld = `<div class="label" style="margin-top:12px">дата</div>
+    <input type="date" id="eh-date" value="${h.date}" max="${todayISO()}">`;
+  let inner;
+  if (h.week===10){
+    inner = dateFld + `<div class="label" style="margin-top:10px">новый 1ПМ, кг</div>
+      <input type="number" id="eh-ton" inputmode="decimal" step="0.5" value="${h.tonnage}">`;
+  } else {
+    inner = dateFld
+      + `<div class="label" style="margin-top:16px">рабочие веса</div>
+         <div class="hint" style="margin-bottom:4px">поправь веса — тоннаж пересчитается сам</div>`
+      + editWeightsRows(h)
+      + `<div class="ew-total"><span class="hint">новый тоннаж</span><b id="eh-newton">${fmt(h.tonnage)} кг</b></div>`;
+  }
   return `<button class="btn ghost" style="margin-top:18px"
       onclick="const b=document.getElementById('eh-edit');b.style.display=b.style.display==='none'?'block':'none'">Изменить</button>
-    <div id="eh-edit" style="display:none">
-      <div class="label" style="margin-top:12px">дата</div>
-      <input type="date" id="eh-date" value="${h.date}" max="${todayISO()}">
-      <div class="label" style="margin-top:10px">тоннаж, кг</div>
-      <input type="number" id="eh-ton" inputmode="numeric" value="${h.tonnage}">
-      <button class="btn" style="margin-top:14px" onclick="saveHistoryEdit(${i})">Сохранить</button>
+    <div id="eh-edit" style="display:none" data-i="${i}">
+      ${inner}
+      <button class="btn" style="margin-top:16px" onclick="saveHistoryEdit(${i})">Сохранить</button>
       <button class="btn ghost" style="margin-top:10px" id="eh-del" onclick="deleteHistory(${i})">Удалить запись</button>
     </div>
     <button class="btn ghost" style="margin-top:10px" onclick="closeModal()">Закрыть</button>`;
+}
+/* собрать веса/отказные повторы из полей редактора */
+function ewCollect(){
+  const weights = {}, fr = {};
+  document.querySelectorAll('#eh-edit .ew-in[data-ex]').forEach(inp=>{
+    const nm = decodeURIComponent(inp.dataset.ex);
+    const kg = parseFloat(String(inp.value||'').replace(',','.'));
+    if (kg>=0 && inp.value!=='') weights[nm] = kg;
+  });
+  document.querySelectorAll('#eh-edit .ew-in.fr').forEach(inp=>{
+    const r = parseInt(inp.value);
+    if (r>0) fr[parseInt(inp.id.slice(5))] = r;
+  });
+  return {weights, fr};
+}
+function ewPreview(){
+  const box = document.getElementById('eh-edit'); if(!box) return;
+  const h = store.data.history[parseInt(box.dataset.i)]; if(!h) return;
+  const {weights, fr} = ewCollect();
+  const t = (h.prog||'tengo')==='aomame'
+    ? aomameTonnage(h.workout, weights)
+    : tengoTonnage(h.week, h.workout, weights, fr, h.rm);
+  const el = document.getElementById('eh-newton');
+  if (el) el.textContent = fmt(t)+' кг';
 }
 function afterHistoryChange(){
   store.data.history.sort((a,b)=>a.date.localeCompare(b.date));
@@ -1934,10 +2097,50 @@ function afterHistoryChange(){
 function saveHistoryEdit(i){
   const h = store.data.history[i]; if (!h) return;
   const d = $('#eh-date').value;
-  const t = Math.round(parseFloat(String($('#eh-ton').value||'').replace(',','.')));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)){ toast('Укажи дату'); return; }
-  if (!(t>=0)){ toast('Укажи тоннаж'); return; }
-  h.date = d; h.tonnage = t;
+  /* при смене даты переносим за ней и рабочие веса этого дня */
+  if (d !== h.date){
+    const prog = h.prog||'tengo';
+    let names = null;
+    if (prog==='tengo' && h.week && h.week<10)
+      names = new Set(CYCLES[cycleForWeek(h.week)].workouts[h.workout-1].filter(e=>e.r!==BENCH).map(e=>e.n));
+    else if (prog==='aomame' && AOMAME[h.workout-1]){
+      names = new Set(); AOMAME[h.workout-1].blocks.forEach(b=>b.ex.forEach(e=>names.add(e.n)));
+    }
+    if (names){
+      for (const k in store.data.exHist){
+        const isA = k.startsWith('a:');
+        if ((prog==='aomame') !== isA) continue;
+        if (!names.has(isA ? k.slice(2) : k)) continue;
+        const arr = store.data.exHist[k];
+        const e = arr.find(x=>x.d===h.date);
+        if (e && !arr.some(x=>x.d===d)){ e.d = d; arr.sort((a,b)=>a.d.localeCompare(b.d)); }
+      }
+    }
+  }
+  const prog = h.prog||'tengo';
+  if (h.week===10){
+    const t = parseFloat(String($('#eh-ton').value||'').replace(',','.'));
+    if (!(t>0)){ toast('Укажи 1ПМ'); return; }
+    h.tonnage = t;
+  } else {
+    const {weights, fr} = ewCollect();
+    /* веса за этот день пишем в историю упражнений */
+    const cyc = prog==='aomame' ? 'w'+h.workout : cycleForWeek(h.week);
+    for (const nm in weights){
+      const key = prog==='aomame' ? 'a:'+nm : nm;
+      const arr = store.data.exHist[key] || (store.data.exHist[key]=[]);
+      let e = arr.find(x=>x.d===d);
+      if (!e){ e = {d, kg:0}; arr.push(e); }
+      e.kg = weights[nm]; e.c = cyc;
+      arr.sort((a,b)=>a.d.localeCompare(b.d));
+    }
+    h.fr = Object.keys(fr).length ? fr : undefined;
+    h.tonnage = prog==='aomame'
+      ? aomameTonnage(h.workout, weights)
+      : tengoTonnage(h.week, h.workout, weights, fr, h.rm);
+  }
+  h.date = d;
   afterHistoryChange();
   closeModal(); haptic('ok'); toast('Тренировка обновлена');
 }
