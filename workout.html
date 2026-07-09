@@ -79,7 +79,9 @@ h1{font-family:var(--serif);font-weight:400;font-size:34px;line-height:1.1;lette
 .cal-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:13px;border-radius:50%;position:relative;color:var(--ink)}
 .cal-cell.dim{color:var(--line)}
 .cal-cell.today{outline:1.5px solid var(--ink)}
-.cal-cell.done{background:var(--accent);color:var(--on-accent);font-weight:600;cursor:pointer}
+.cal-cell.done{background:var(--accent);color:var(--on-accent);font-weight:600}
+.cal-cell.tapable{cursor:pointer}
+.cal-cell.tapable:active{transform:scale(.9)}
 .cal-cell .w{position:absolute;bottom:1px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--ok)}
 .cal-cell.cardio{box-shadow:inset 0 0 0 1.5px var(--ok)}
 .cal-cell.done.cardio{box-shadow:0 0 0 1.5px var(--bg),0 0 0 3px var(--ok)}
@@ -328,7 +330,7 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
       </div>
     </div>
     <div class="cal-grid" id="cal-grid"></div>
-    <div class="hint">заполненный день — тренировка, нажми для сводки · кольцо — кардио · точка — вес · тап по названию месяца вернёт к текущему</div>
+    <div class="hint">нажми на любой прошедший день — сводка и добавление · заливка — тренировка · кольцо — кардио · точка — вес · тап по месяцу вернёт к текущему</div>
   </div>
 </section>
 
@@ -368,10 +370,12 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
       <div class="label">новая запись · дорожка</div>
       <div class="inline">
         <input type="number" id="c-mins" inputmode="numeric" min="1" max="600" placeholder="минуты">
-        <input type="number" id="c-dist" inputmode="decimal" step="0.01" placeholder="км (с дорожки)">
-        <button class="btn" onclick="addCardio()">Записать</button>
+        <input type="number" id="c-dist" inputmode="decimal" step="0.01" placeholder="км">
       </div>
-      <div class="hint">км — по дисплею дорожки, необязательно; записи за один день суммируются</div>
+      <div class="label" style="margin-top:12px">дата</div>
+      <input type="date" id="c-date">
+      <button class="btn" style="margin-top:12px" onclick="addCardio()">Записать</button>
+      <div class="hint">км — по дисплею дорожки, необязательно · записи за один день суммируются</div>
     </div>
     <div class="card">
       <div class="label">этот месяц</div>
@@ -403,6 +407,7 @@ html[data-theme=dark] .tswitch .knob{left:24px;background:var(--ok)}
         <button id="cm-km" onclick="setCMetric('km')">км</button>
       </div>
       <svg id="c-bars" viewBox="0 0 320 98" style="width:100%;height:auto;display:block"></svg>
+      <div class="hint" id="c-bars-empty" style="display:none">Появится, когда будет хотя бы одна запись.</div>
     </div>
     <div class="card light">
       <div class="label">последние записи</div>
@@ -957,7 +962,9 @@ function renderCalendar(){
     if (doneDates.has(iso)) cls.push('done');
     if (cardioDates.has(iso)) cls.push('cardio');
     if (iso>today) cls.push('fut');
-    const click = doneDates.has(iso) ? ` onclick="openDay('${iso}')"` : '';
+    const tapable = iso<=today;
+    if (tapable) cls.push('tapable');
+    const click = tapable ? ` onclick="openDay('${iso}')"` : '';
     html += `<div class="${cls.join(' ')}"${click}>${d}${weightDates.has(iso)?'<span class="w"></span>':''}</div>`;
   }
   $('#cal-grid').innerHTML = html;
@@ -991,24 +998,72 @@ function monthCardio(){
     km:   rows.reduce((s,c)=>s+(c.dist||0),0)
   };
 }
+/* запись кардио на дату; за один день значения складываются */
+function addCardioEntry(date, mins, dist){
+  const arr = store.data.cardio || (store.data.cardio=[]);
+  const same = arr.find(c=>c.date===date);
+  if (same){
+    same.mins += mins;
+    const d = (same.dist||0) + dist;
+    if (d>0) same.dist = Math.round(d*100)/100; else delete same.dist;
+  } else {
+    arr.push({date, mins, dist: dist>0 ? Math.round(dist*100)/100 : undefined});
+  }
+  arr.sort((a,b)=>a.date.localeCompare(b.date));
+  if (arr.length>400) store.data.cardio = arr.slice(-400);
+  store.save();
+}
+function validCardioDate(d){ return /^\d{4}-\d{2}-\d{2}$/.test(d) && d<=todayISO(); }
 function addCardio(){
   const mins = parseInt($('#c-mins').value);
   if (!(mins>0)){ toast('Введи минуты'); return; }
   const dist = parseFloat(String($('#c-dist').value||'').replace(',','.')) || 0;
-  const date = todayISO();
-  const arr = store.data.cardio || (store.data.cardio=[]);
-  const same = arr.find(c=>c.date===date);
-  if (same){ same.mins += mins; same.dist = (same.dist||0) + dist; }
-  else arr.push({date, mins, dist: dist||undefined});
-  arr.sort((a,b)=>a.date.localeCompare(b.date));
-  store.save();
-  $('#c-mins').value=''; $('#c-dist').value='';
-  haptic('ok'); toast('Кардио записано');
-  renderCardio();
+  const date = $('#c-date').value || todayISO();
+  if (!validCardioDate(date)){ toast('Дата не может быть в будущем'); return; }
+  addCardioEntry(date, mins, dist);
+  $('#c-mins').value=''; $('#c-dist').value=''; $('#c-date').value = todayISO();
+  haptic('ok');
+  toast(date===todayISO() ? 'Кардио записано' : 'Записано на '+fmtDateRu(date));
+  renderCardio(); renderHome();
 }
-function delCardio(date){
+/* просмотр / правка / создание записи кардио на конкретную дату */
+let cardioDelArm = 0;
+function openCardioEdit(iso){
+  const c = (store.data.cardio||[]).find(x=>x.date===iso);
+  cardioDelArm = 0;
+  openModal(`
+    <div class="label">${c ? 'кардио · '+fmtDateRu(iso) : 'кардио · '+fmtDateRu(iso)}</div>
+    ${c && c.dist ? `<div class="hint" style="margin-top:6px">сейчас ${c.mins} мин · ${String(c.dist).replace('.',',')} км · ${(c.dist/(c.mins/60)).toFixed(1).replace('.',',')} км/ч</div>` : ''}
+    <div class="label" style="margin-top:14px">минуты</div>
+    <input type="number" id="ce-mins" inputmode="numeric" min="1" value="${c?c.mins:''}" placeholder="напр. 40">
+    <div class="label" style="margin-top:10px">километры</div>
+    <input type="number" id="ce-dist" inputmode="decimal" step="0.01" value="${c&&c.dist?c.dist:''}" placeholder="с дисплея дорожки">
+    <div class="label" style="margin-top:10px">дата</div>
+    <input type="date" id="ce-date" value="${iso}" max="${todayISO()}">
+    <button class="btn" style="margin-top:16px" onclick="saveCardioEdit('${iso}')">Сохранить</button>
+    ${c?`<button class="btn ghost" style="margin-top:10px" id="ce-del" onclick="deleteCardio('${iso}')">Удалить запись</button>`:''}
+    <button class="btn ghost" style="margin-top:10px" onclick="closeModal()">Закрыть</button>`);
+}
+function saveCardioEdit(origDate){
+  const mins = parseInt($('#ce-mins').value);
+  if (!(mins>0)){ toast('Введи минуты'); return; }
+  const dist = parseFloat(String($('#ce-dist').value||'').replace(',','.')) || 0;
+  const d = $('#ce-date').value;
+  if (!validCardioDate(d)){ toast('Дата не может быть в будущем'); return; }
+  store.data.cardio = (store.data.cardio||[]).filter(c=>c.date!==origDate);
+  addCardioEntry(d, mins, dist);
+  closeModal(); haptic('ok'); toast('Кардио сохранено');
+  renderCardio(); renderHome();
+}
+function deleteCardio(date){
+  if (Date.now()-cardioDelArm > 4000){
+    cardioDelArm = Date.now();
+    const b = $('#ce-del'); if (b) b.textContent = 'Точно удалить? Нажми ещё раз';
+    haptic(); return;
+  }
   store.data.cardio = (store.data.cardio||[]).filter(c=>c.date!==date);
-  store.save(); haptic(); renderCardio();
+  store.save(); closeModal(); haptic('ok'); toast('Запись удалена');
+  renderCardio(); renderHome();
 }
 function saveCardioGoal(){
   const rawM = $('#c-goal-in').value, rawK = $('#c-goal-km').value;
@@ -1052,6 +1107,8 @@ function renderCardio(){
   $('#c-km').innerHTML = m.km.toFixed(1).replace('.',',') + '<small>км</small>';
   $('#c-steps').textContent = m.km>0 ? '≈'+fmt(estSteps(m.km))+' шагов' : 'впиши км с дорожки';
   $('#c-pace').textContent = (m.km>0 && m.mins>0) ? 'средняя '+(m.km/(m.mins/60)).toFixed(1).replace('.',',')+' км/ч' : '';
+  const dEl = $('#c-date');
+  if (dEl){ dEl.max = todayISO(); if (!dEl.value) dEl.value = todayISO(); }
   const g = store.data.cardioGoal||0, gk = store.data.cardioGoalKm||0;
   $('#c-goal-in').placeholder = g ? 'минуты: '+g : 'минуты, напр. 600';
   $('#c-goal-km').placeholder = gk ? 'км: '+String(gk).replace('.',',') : 'км, напр. 40';
@@ -1077,17 +1134,19 @@ function renderCardio(){
       + (lbl?`<text x="${x+bw/2}" y="${H-20-h}" font-size="9" fill="var(--muted)" text-anchor="middle" font-family="var(--sans)">${lbl}</text>`:'')
       + `<text x="${x+bw/2}" y="${H-3}" font-size="9" fill="var(--muted)" text-anchor="middle" font-family="var(--sans)">${String(weeks[i].getDate()).padStart(2,'0')}.${String(weeks[i].getMonth()+1).padStart(2,'0')}</text>`;
   });
-  $('#c-bars').innerHTML = bars;
-  /* журнал: минуты · км · скорость */
+  const hasData = vals.some(v=>v>0);
+  $('#c-bars').innerHTML = hasData ? bars : '';
+  $('#c-bars').style.display = hasData ? 'block' : 'none';
+  $('#c-bars-empty').style.display = hasData ? 'none' : 'block';
+  /* журнал: минуты · км · скорость · тап открывает правку */
   const arr=[...(store.data.cardio||[])].reverse().slice(0,30);
   $('#c-log').innerHTML = arr.length ? arr.map(c=>{
     const dd=new Date(c.date+'T12:00');
     const extra = c.dist
       ? ' · '+c.dist.toFixed(1).replace('.',',')+' км · '+(c.dist/(c.mins/60)).toFixed(1).replace('.',',')+' км/ч'
       : '';
-    return `<div class="log-item"><b>${c.mins} мин${extra}</b>
-      <span>${dd.getDate()} ${MONTHS[dd.getMonth()].slice(0,3)}
-      <b style="margin-left:8px;cursor:pointer" onclick="delCardio('${c.date}')">×</b></span></div>`;
+    return `<div class="log-item jrow" onclick="openCardioEdit('${c.date}')"><b>${c.mins} мин${extra}</b>
+      <span class="nw" style="color:var(--muted)">${dd.getDate()} ${MONTHS[dd.getMonth()].slice(0,3)} ›</span></div>`;
   }).join('') : '<div class="hint">Пока пусто. Первая запись появится здесь.</div>';
 }
 
@@ -1917,7 +1976,8 @@ function undoFinish(){
 /* ============ ЗАПИСЬ ЗАДНИМ ЧИСЛОМ ============ */
 function askBackdate(){
   const y = new Date(); y.setDate(y.getDate()-1);
-  const yISO = y.getFullYear()+'-'+String(y.getMonth()+1).padStart(2,'0')+'-'+String(y.getDate()).padStart(2,'0');
+  let yISO = y.getFullYear()+'-'+String(y.getMonth()+1).padStart(2,'0')+'-'+String(y.getDate()).padStart(2,'0');
+  if (pendingBackdate && pendingBackdate<=todayISO()) yISO = pendingBackdate;
   openModal(`
     <div class="label">записать тренировку задним числом</div>
     <div class="hint" style="margin-top:8px">введённые веса и отмеченные подходы сохранятся как есть, тренировка попадёт в календарь и историю выбранным днём, цикл продвинется как обычно</div>
@@ -1930,6 +1990,7 @@ function backdateFinish(){
   const d = $('#bd-date').value;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > todayISO()){ toast('Укажи прошедшую дату'); return; }
   closeModal();
+  pendingBackdate = null;
   if (store.data.program==='aomame') finishAomame(d); else finishWorkout(d);
 }
 
@@ -1954,14 +2015,41 @@ function journalCard(){
     ${H.length>20?`<div class="hint" style="margin-top:8px">показаны последние 20 из ${H.length}</div>`:''}</div>`;
 }
 function openDay(iso){
-  const list = store.data.history.map((h,i)=>({h,i})).filter(x=>x.h.date===iso);
-  if (!list.length) return;
   haptic();
-  if (list.length===1){ openHistory(list[0].i); return; }
-  openModal(`<div class="label">${fmtDateRu(iso)}</div>
-    ${list.map(({h,i})=>`<div class="log-item jrow" onclick="openHistory(${i})">
-      <b style="font-size:14px">${describeH(h)}</b><span class="nw" style="color:var(--muted)">${fmt(h.tonnage)} кг ›</span></div>`).join('')}
-    <button class="btn ghost" style="margin-top:14px" onclick="closeModal()">Закрыть</button>`);
+  const list = store.data.history.map((h,i)=>({h,i})).filter(x=>x.h.date===iso);
+  const c  = (store.data.cardio||[]).find(x=>x.date===iso);
+  const wt = store.data.weights.find(x=>x.date===iso);
+  let html = `<div class="label">${fmtDateRu(iso)}</div>`;
+
+  if (list.length || c || wt){
+    html += list.map(({h,i})=>`<div class="log-item jrow" onclick="openHistory(${i})">
+      <b style="font-size:14px">${describeH(h)}</b>
+      <span class="nw" style="color:var(--muted)">${fmt(h.tonnage)} кг ›</span></div>`).join('');
+    if (c) html += `<div class="log-item jrow" onclick="openCardioEdit('${iso}')">
+      <b style="font-size:14px">Кардио · ${c.mins} мин${c.dist?' · '+String(c.dist).replace('.',',')+' км':''}</b>
+      <span class="nw" style="color:var(--muted)">›</span></div>`;
+    if (wt) html += `<div class="log-item">
+      <b style="font-size:14px">Вес</b><span class="nw" style="color:var(--muted)">${String(wt.kg).replace('.',',')} кг</span></div>`;
+  } else {
+    html += `<div class="hint" style="margin-top:8px">В этот день записей нет.</div>`;
+  }
+
+  html += `<div class="label" style="margin-top:18px">добавить</div>
+    <button class="btn ghost" style="margin-top:8px" onclick="openCardioEdit('${iso}')">${c?'Изменить кардио':'Кардио'}</button>
+    <button class="btn ghost" style="margin-top:10px" onclick="startBackdatedWorkout('${iso}')">Тренировку</button>
+    <button class="btn ghost" style="margin-top:10px" onclick="closeModal()">Закрыть</button>`;
+  openModal(html);
+}
+/* «Тренировку» из календаря: уводим на экран тренировки и запоминаем дату,
+   она подставится в окно «Записать на прошедшую дату». */
+let pendingBackdate = null;
+function startBackdatedWorkout(iso){
+  pendingBackdate = iso;
+  closeModal();
+  go('workout');
+  toast(iso===todayISO()
+    ? 'Отметь подходы и заверши тренировку'
+    : 'Заполни веса → «Записать на прошедшую дату»');
 }
 let histDelArm = 0;
 function openHistory(i){
