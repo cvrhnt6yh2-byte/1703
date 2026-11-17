@@ -710,20 +710,14 @@ html[data-theme=dark] #intro{--i-bg:#0B0B0B;--i-card:#151514;--i-ink:#EDEBE6;--i
   text-transform:uppercase;color:var(--i-mut)}
 .i-top{margin-bottom:8px}.i-top span:first-child{color:var(--i-ink)}
 .i-media{position:relative;aspect-ratio:3/4;background:var(--i-card);overflow:hidden}
-.i-media img{width:100%;height:100%;object-fit:cover;display:block;animation:breathe 7s ease-in-out infinite;filter:saturate(.85) contrast(.96)}
+.i-media img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none;
+  animation:breathe 7s ease-in-out infinite;filter:saturate(.8) contrast(.95);
+  -webkit-mask-image:radial-gradient(closest-side,#000 70%,transparent 100%);mask-image:radial-gradient(closest-side,#000 70%,transparent 100%)}
+html[data-theme=dark] .i-media img{filter:saturate(.7) brightness(.82) contrast(1.05)}
+#intro.flower .i-media img{display:block}
+#intro.flower .i-media canvas{visibility:hidden}
 @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
-.i-cards{display:flex;align-items:flex-end}
-.i-card.back{width:min(30vw,140px);padding:8px 8px 10px;margin-right:-16px;position:relative;z-index:0;cursor:default;
-  transform:translateY(-22px) rotate(-2deg);opacity:.96}
-.i-card.back .i-top,.i-card.back .i-meta{padding-right:16px}
-.i-card.back .i-desc,.i-card.back .i-title{padding-right:12px}
-.i-card.back .i-title{font-size:18px;margin:6px 0 4px}
-.i-card.back .i-desc{font-size:9px;min-height:0}
-.i-card.back .i-top,.i-card.back .i-meta{font-size:7.5px}
-.i-card.back .i-foot{font-size:8.5px;margin-top:7px}
-.i-card.back .i-ring{width:16px;height:16px}.i-card.back .i-ring b{inset:3px}
-.i-ring.lav i{background:conic-gradient(from -90deg,#D9CBEF,#A68BD6);--p:68%}
-.i-card.front{position:relative;z-index:1;width:min(50vw,250px)}
+.i-card.front{position:relative;z-index:1;width:min(64vw,262px)}
 @media (max-width:420px){.i-btn{width:54px;height:54px;border-radius:16px}.i-stage{gap:8px}}
 .i-media canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
 .i-media video{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
@@ -798,6 +792,18 @@ html[data-style=color][data-theme=dark] .hero-wrap::before{opacity:.42}
 .op-btn:active{transform:scale(.97)}
 .op-btn.acc{background:var(--acc);border-color:transparent;color:#0B2A1E}
 .offplan{background:var(--card);border-radius:16px;padding:12px 14px;margin:0 0 12px}
+
+/* связки Tengo: два упражнения кругом */
+.combo{position:relative;background:var(--card2);border-radius:calc(var(--r-lg) + 6px);padding:6px;margin-bottom:12px;
+  box-shadow:inset 0 0 0 1px var(--line)}
+.combo .ex{margin-bottom:0}
+.combo-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:6px 10px 8px;font-size:11.5px;color:var(--muted);line-height:1.35}
+.combo-t{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--acc-ink)}
+.combo-link{position:relative;height:14px;display:grid;place-items:center;z-index:1}
+.combo-link::before{content:"";position:absolute;left:50%;top:-6px;bottom:-6px;width:1.5px;background:var(--acc);transform:translateX(-50%);opacity:.6}
+.combo-link svg{position:relative;width:22px;height:22px;padding:4px;border-radius:50%;background:var(--card2);box-shadow:0 0 0 1px var(--line);
+  fill:none;stroke:var(--acc-ink);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.solo-h{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:16px 6px 8px}
 </style>
 </head>
 <body>
@@ -807,18 +813,9 @@ html[data-style=color][data-theme=dark] .hero-wrap::before{opacity:.42}
 <div id="intro">
   <canvas id="halftone"></canvas>
   <div class="i-stage">
-    <div class="i-card back" aria-hidden="true">
-      <div class="i-top"><span>1703</span><span>№ 02</span></div>
-      <div class="i-media"><img id="i-flower" alt=""></div>
-      <div class="i-rule"></div>
-      <div class="i-meta"><span>Серия</span><span id="i-streak">—</span></div>
-      <div class="i-title">Цветение</div>
-      <div class="i-desc" id="i-bdesc">Неделя за неделей</div>
-      <div class="i-foot"><div class="i-ring lav"><i></i><b></b></div><span id="i-month">—</span></div>
-    </div>
     <div class="i-card front" onclick="enterApp()">
       <div class="i-top"><span>1703</span><span id="i-when"></span></div>
-      <div class="i-media"><canvas id="dither"></canvas>
+      <div class="i-media"><canvas id="dither"></canvas><img id="i-flower" alt="">
         <video id="intro-video" muted playsinline preload="auto"></video></div>
       <div class="i-rule"></div>
       <div class="i-meta"><span id="i-prog">Tengo</span><span id="i-time"></span></div>
@@ -1584,6 +1581,19 @@ const Intro = {
     this.PAPER = (255<<24)|(paper[2]<<16)|(paper[1]<<8)|paper[0];
     const v = this.v = $('#intro-video');
     this.useVideo = false;
+    /* две заставки по очереди: бабочка (видео) и георгина — меняются при каждом запуске */
+    let n = 0; try{ n = (+localStorage.getItem('tp1703_introN')||0); localStorage.setItem('tp1703_introN', String(n+1)); }catch(e){}
+    this.flower = (n%2===1) && typeof DAHLIA_SRC==='string';
+    if (this.flower){
+      $('#intro').classList.add('flower');
+      const f = $('#i-flower'); if (f && !f.src) f.src = DAHLIA_SRC;
+      this.halftoneInit();
+      let last = 0;
+      const loopF = now => { if (!this.on) return; this.raf = requestAnimationFrame(loopF);
+        if (now-last < 40) return; last = now; if (!REDUCED || !this.htDrawn) this.halftone(now); };
+      this.raf = requestAnimationFrame(loopF);
+      return;
+    }
     try{
       if (typeof INTRO_B64==='string' && INTRO_B64.length>100 && !v.src){
         const bin = atob(INTRO_B64), u8 = new Uint8Array(bin.length);
@@ -2816,7 +2826,7 @@ function toggleSet(btn, rest){
   sessionChecks[e][s] = !sessionChecks[e][s];
   btn.classList.toggle('on', sessionChecks[e][s]);
   if (!woStartTs) woStartTs = Date.now();
-  if (sessionChecks[e][s]) { startRest(rest||120); haptic('med'); } else { cancelRest(true); haptic(); }
+  if (sessionChecks[e][s]) { if (rest<0) cancelRest(true); else startRest(rest||120); haptic('med'); } else { cancelRest(true); haptic(); }
   updateProgress();
   saveSession(true);
 }
@@ -2878,8 +2888,8 @@ function renderWorkout(dir, anim){
     html = woHeadHTML(key, `Тренировка ${n}`, `${cyc.name} микроцикл · неделя ${w}`, 'tengo', n,
       [[cyc.workouts[n-1].length,'упражнений'],[sets+'×','подходов'],[am?'~'+am:'—','минут'],[pt?(pt/1000).toFixed(1).replace('.',',')+' т':'—','в прошлый раз']]);
     html += ringCardHTML();
-    const prevRec = prevSameRec('tengo', w, n);
-    cyc.workouts[n-1].forEach((ex,i)=>{
+    const prevRec = prevSameRec('tengo', w, n), exHtml = [];
+    cyc.workouts[n-1].forEach((ex,i)=>{ let html = '';
       if (ex.r===BENCH){
         const sIdx = benchSession(w,n)-1, parts = BENCH_PROGRAM[sIdx];
         let from = 0, partsHtml = '';
@@ -2911,14 +2921,31 @@ function renderWorkout(dir, anim){
           <div class="ex-ctl">${kgField(saved, `onKgInput(this,'t','${jsq(ex.n)}','${key}')`, '', any?any.kg:null)}
             ${isFail?`<input class="reps-in" type="text" inputmode="numeric" placeholder="повт." data-i="${i}" oninput="saveSession(true)">`:''}
             <div class="prev">${prevTxt}</div></div>
-          <div class="sets">${setsHTML(i, 0, sets, 120)}</div>${tagsHTML(i)}</div>`;
+          <div class="sets">${setsHTML(i, 0, sets, (i===0||i===2) ? -1 : 120)}</div>${tagsHTML(i)}</div>`;
       }
+      exHtml.push(html);
     });
+    html += tengoGroupsHTML(cyc.workouts[n-1], exHtml);
     html += finishButtonsHTML();
   }
   body.innerHTML = html;
   body.className = REDUCED ? '' : (dir ? (dir>0?'slide-r':'slide-l') : (anim?'stagger':''));
   if (w<10){ restoreSession(); updateProgress(); }
+}
+/* Tengo: 1+2 и 3+4 — связки (кругом), 5 и 6 — по одному */
+function tengoGroupsHTML(list, parts){
+  const link = `<div class="combo-link"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></div>`;
+  let out = '';
+  [[0,1],[2,3]].forEach(([a,b],k)=>{
+    if (!parts[a]) return;
+    if (!parts[b]){ out += parts[a]; return; }
+    const bench = list[a].r===BENCH;
+    const note = bench ? 'сначала жим, остаток подходов — кругом' : 'без отдыха между ними · отдых после второго';
+    out += `<div class="combo"><div class="combo-h"><span class="combo-t">Связка ${k+1}</span><span>${a+1} + ${b+1} · ${note}</span></div>
+      ${parts[a]}${link}${parts[b]}</div>`;
+  });
+  if (parts.length>4) out += `<div class="solo-h">По одному</div>` + parts.slice(4).join('');
+  return out;
 }
 function finishButtonsHTML(){
   return `<div class="btns" style="margin-top:6px">
@@ -3654,11 +3681,6 @@ function introText(){
   $('#i-when').textContent = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getFullYear()).slice(2)}`;
   $('#i-time').textContent = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
   $('#i-prog').textContent = D.program==='aomame' ? 'Aomame' : 'Tengo';
-  try{ const f=$('#i-flower'); if (f && !f.src && typeof DAHLIA_SRC==='string') f.src=DAHLIA_SRC;
-    const st=weekStreak(); $('#i-streak').textContent = st+' нед.';
-    $('#i-bdesc').textContent = st>1 ? `${st} недели подряд без пропусков` : 'Каждая неделя — новый лепесток';
-    $('#i-month').textContent = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][d.getMonth()];
-  }catch(e){}
   if (D.program==='aomame'){ $('#i-title').textContent = `Тренировка ${D.aWorkout}`; $('#i-desc').textContent = 'Круговая · три блока по четыре круга'; }
   else if (D.week>=10){ $('#i-title').textContent = 'Проходка'; $('#i-desc').textContent = 'Неделя 10 · новый максимум в жиме'; }
   else { const c = CYCLES[cycleForWeek(D.week)];
