@@ -949,19 +949,29 @@ const CLOUD = !!(tg && tg.CloudStorage && tgVer('6.9'));
    Старый одиночный ключ tp1703 читается для миграции и больше не перезаписывается. */
 const UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || 'local';
 const SKEY = 'tp1703_' + UID;
-const CK_META = 'tp1703v2', CK_PART = 'tp1703v2_', CK_LEGACY = 'tp1703', CHUNK = 3800;
+const CK_META = 'tp1703v2', CK_PART = 'tp1703v2_', CK_LEGACY = 'tp1703', CK_BK = 'tp1703bk', CHUNK = 3800;
 
 const DEFAULTS = () => ({ style:'mono', mood:{}, off:{}, weights:[], history:[], workWeights:{}, week:1, workout:1, benchRM:100, program:'tengo',
   aWorkout:1, aWeights:{}, exHist:{}, rmHist:[], theme:'light', session:null, cardio:[], cardioGoal:0, cardioGoalKm:0, savedAt:0 });
 
+/* ответ облака: undefined — ошибка/нет связи, null — ключа нет, строка — значение */
 function cloudGet(key){
   return new Promise(res=>{
-    try{ tg.CloudStorage.getItem(key, (err,val)=>res(err?null:(val||null))); }catch(e){ res(null); }
+    const t = setTimeout(()=>res(undefined), 15000);
+    try{ tg.CloudStorage.getItem(key, (err,val)=>{ clearTimeout(t); res(err?undefined:(val||null)); }); }catch(e){ clearTimeout(t); res(undefined); }
   });
 }
 function cloudGetMany(keys){
   return new Promise(res=>{
-    try{ tg.CloudStorage.getItems(keys, (err,obj)=>res(err?null:obj)); }catch(e){ res(null); }
+    if (!keys.length) return res({});
+    const t = setTimeout(()=>res(null), 15000);
+    try{ tg.CloudStorage.getItems(keys, (err,obj)=>{ clearTimeout(t); res(err?null:obj); }); }catch(e){ clearTimeout(t); res(null); }
+  });
+}
+function cloudKeys(){
+  return new Promise(res=>{
+    const t = setTimeout(()=>res(null), 15000);
+    try{ tg.CloudStorage.getKeys((err,keys)=>{ clearTimeout(t); res(err?null:(keys||[])); }); }catch(e){ clearTimeout(t); res(null); }
   });
 }
 function cloudSet(key,val){
@@ -971,34 +981,64 @@ function cloudSet(key,val){
 }
 function safeParse(s){ try{ const o = JSON.parse(s); return (o && typeof o==='object') ? o : null; }catch(e){ return null; } }
 
+/* ---- слияние двух копий: ничего не теряем ---- */
+const hKey = h => [h.date, h.prog||'t', h.week||0, h.workout||0].join('|');
+function unionBy(a, b, keyFn){ const m = new Map(); (a||[]).forEach(x=>{ if (x) m.set(keyFn(x), x); }); (b||[]).forEach(x=>{ if (x) m.set(keyFn(x), x); });
+  return [...m.values()].sort((x,y)=>String(x.date||x.d||'').localeCompare(String(y.date||y.d||''))); }
+function mergeData(older, newer){
+  if (!older) return newer; if (!newer) return older;
+  const o = Object.assign({}, older, newer);              // настройки и позиция — из более свежей
+  o.history = unionBy(older.history, newer.history, hKey);
+  o.weights = unionBy(older.weights, newer.weights, x=>x.date);
+  o.cardio  = unionBy(older.cardio, newer.cardio, x=>x.date);
+  o.rmHist  = unionBy(older.rmHist, newer.rmHist, x=>x.d+'|'+x.kg);
+  ['workWeights','aWeights','mood','off'].forEach(k=>{ o[k] = Object.assign({}, older[k]||{}, newer[k]||{}); });
+  o.exHist = Object.assign({}, older.exHist||{});
+  for (const k in (newer.exHist||{})) o.exHist[k] = unionBy(o.exHist[k], newer.exHist[k], x=>x.d+'|'+(x.c||''));
+  const oh = (older.history||[]).length, nh = (newer.history||[]).length;
+  if (oh > nh && (newer.week||1)===1 && (newer.workout||1)===1 && !nh){   // свежая копия пустая — позицию берём из старой
+    ['week','workout','benchRM','aWorkout','program'].forEach(k=>{ if (older[k]!=null) o[k] = older[k]; });
+  }
+  o.savedAt = Math.max(older.savedAt||0, newer.savedAt||0);
+  return o;
+}
+const histLen = d => (d && Array.isArray(d.history)) ? d.history.length : 0;
+
 const store = {
   data: DEFAULTS(),
   source: 'none',
   _parts: [],
   _cloudBusy: false,
   _cloudAgain: false,
+  cloudOk: false,          // облако прочитано успешно — только после этого разрешена запись в облако
+  cloudHist: 0,            // сколько тренировок было в облаке при чтении
+  allowShrink: false,      // осознанное удаление / импорт
 
   readLocal(){
     let raw = null;
     try{ raw = localStorage.getItem(SKEY) || (UID==='local' ? localStorage.getItem('tp1703') : null); }catch(e){}
     return raw ? safeParse(raw) : null;
   },
+  /* {ok:true, data} — облако ответило (data может быть null); {ok:false} — связи нет */
   async readCloud(){
-    if (!CLOUD) return null;
+    if (!CLOUD) return {ok:false};
     const metaRaw = await cloudGet(CK_META);
+    if (metaRaw === undefined) return {ok:false};
     const meta = metaRaw && safeParse(metaRaw);
     if (meta && meta.n>0){
       const keys = []; for (let i=0;i<meta.n;i++) keys.push(CK_PART+i);
       const obj = await cloudGetMany(keys);
-      if (!obj) return null;
+      if (!obj) return {ok:false};
       let joined = '';
-      for (const k of keys){ if (typeof obj[k] !== 'string') return null; joined += obj[k]; }
+      for (const k of keys){ if (typeof obj[k] !== 'string') return {ok:false}; joined += obj[k]; }
       const d = safeParse(joined);
-      if (d){ this._parts = keys.map(k=>obj[k]); d.__v2 = true; }
-      return d;
+      if (!d) return {ok:false};
+      this._parts = keys.map(k=>obj[k]); d.__v2 = true;
+      return {ok:true, data:d};
     }
     const legacy = await cloudGet(CK_LEGACY);
-    return legacy ? safeParse(legacy) : null;   // обрезанное старое значение просто не распарсится
+    if (legacy === undefined) return {ok:false};
+    return {ok:true, data: legacy ? safeParse(legacy) : null};
   },
   apply(d){
     const base = DEFAULTS();
@@ -1008,25 +1048,40 @@ const store = {
     delete base.__v2;
     this.data = base;
   },
-  /* загрузка: локальная копия сразу, облако — с таймаутом; побеждает более свежая */
+  /* загрузка: локальная копия сразу, облако — с таймаутом.
+     Копии сливаются (история объединяется), поэтому пустая копия больше не может затереть полную. */
   async load(onLate){
     const local = this.readLocal();
     if (local){ this.apply(local); this.source='local'; try{ if (!localStorage.getItem(SKEY)) this.writeLocal(); }catch(e){} }
     if (!CLOUD) return;
     let settled = false;
-    const cloudP = this.readCloud().then(cloud=>{
-      if (!cloud) return false;
-      const newer = (cloud.savedAt||0) > (this.data.savedAt||0) || !local;
-      const migrate = !cloud.__v2;
-      if (newer){
-        this.apply(cloud); this.source='cloud';
-        this.writeLocal();
+    const attempt = async ()=>{
+      for (let i=0;i<4;i++){ const r = await this.readCloud(); if (r.ok) return r; await new Promise(z=>setTimeout(z, 1500)); }
+      return {ok:false};
+    };
+    const cloudP = attempt().then(r=>{
+      if (!r.ok) return false;
+      const cloud = r.data;
+      this.cloudHist = histLen(cloud);
+      const cur = JSON.parse(JSON.stringify(this.data));
+      let next = cur, changed = false;
+      if (cloud){
+        const cloudNewer = (cloud.savedAt||0) > (cur.savedAt||0) || !local;
+        next = cloudNewer ? mergeData(local ? cur : null, cloud) : mergeData(cloud, cur);
+        changed = JSON.stringify(next) !== JSON.stringify(cur);
+      }
+      this.cloudOk = true;
+      if (changed){
+        this.apply(next); this.source='cloud'; this.writeLocal();
         if (settled && onLate) onLate();
       }
-      if (migrate || (!newer && (this.data.savedAt||0) > (cloud.savedAt||0))) this.flushCloud();
-      return newer;
+      const needPush = !cloud || !cloud.__v2 || JSON.stringify(Object.assign({},cloud,{__v2:undefined})) !== JSON.stringify(Object.assign({},this.data,{__v2:undefined}));
+      if (needPush && (histLen(this.data) >= this.cloudHist)) this.flushCloud();
+      this.maybeBackup();
+      return changed;
     }).catch(()=>false);
-    await Promise.race([cloudP, new Promise(r=>setTimeout(r, 3500))]);
+    /* без локальной копии ждём облако дольше — чтобы не показать пустое приложение */
+    await Promise.race([cloudP, new Promise(r=>setTimeout(r, local ? 3500 : 12000))]);
     settled = true;
   },
   writeLocal(){
@@ -1040,7 +1095,8 @@ const store = {
   },
   async flushCloud(){
     clearTimeout(this._t);
-    if (!CLOUD) return;
+    if (!CLOUD || !this.cloudOk) return;                      // облако ещё не прочитано — не пишем вслепую
+    if (!this.allowShrink && histLen(this.data) < this.cloudHist) return;   // меньше тренировок, чем в облаке — не затираем
     if (this._cloudBusy){ this._cloudAgain = true; return; }
     this._cloudBusy = true;
     try{
@@ -1052,15 +1108,27 @@ const store = {
         const ok = await cloudSet(CK_PART+i, parts[i]);
         if (!ok) throw new Error('cloud');
       }
-      await cloudSet(CK_META, JSON.stringify({n:parts.length, savedAt:this.data.savedAt, v:2}));
-      if (this._parts.length > parts.length){
-        const extra = []; for (let i=parts.length;i<this._parts.length;i++) extra.push(CK_PART+i);
-        try{ tg.CloudStorage.removeItems(extra, ()=>{}); }catch(e){}
-      }
+      await cloudSet(CK_META, JSON.stringify({n:parts.length, savedAt:this.data.savedAt, v:2, h:histLen(this.data)}));
       this._parts = parts;
+      this.cloudHist = histLen(this.data); this.allowShrink = false;
     }catch(e){ /* сеть пропала — повторим при следующем сохранении */ }
     this._cloudBusy = false;
     if (this._cloudAgain){ this._cloudAgain = false; this.flushCloud(); }
+  },
+  /* резервная копия в облаке раз в день, отдельными ключами; не перезаписывается копией с меньшей историей */
+  async maybeBackup(){
+    try{
+      if (!CLOUD || !this.cloudOk) return;
+      const h = histLen(this.data); if (!h) return;
+      const metaRaw = await cloudGet(CK_BK); if (metaRaw === undefined) return;
+      const meta = metaRaw && safeParse(metaRaw);
+      const day = new Date().toISOString().slice(0,10);
+      if (meta && (meta.day===day || (meta.h||0) > h)) return;
+      const json = JSON.stringify(this.data);
+      const n = Math.ceil(json.length/CHUNK);
+      for (let i=0;i<n;i++){ if (!await cloudSet(CK_BK+'_'+i, json.slice(i*CHUNK,(i+1)*CHUNK))) return; }
+      await cloudSet(CK_BK, JSON.stringify({n, h, day, savedAt:this.data.savedAt}));
+    }catch(e){}
   }
 };
 document.addEventListener('visibilitychange', ()=>{
@@ -3160,7 +3228,7 @@ function undoFinish(){
   if (!undoSnap) return;
   clearInterval(undoTimer);
   const s = undoSnap; undoSnap = null;
-  store.data.history = JSON.parse(s.hist); store.data.week = s.week; store.data.workout = s.workout;
+  store.allowShrink = true; store.data.history = JSON.parse(s.hist); store.data.week = s.week; store.data.workout = s.workout;
   store.data.aWorkout = s.aWorkout; store.data.exHist = JSON.parse(s.exHist); store.data.session = JSON.parse(s.session);
   if (store.data.session) store.data.session.updated = Date.now();
   store.save(); haptic('ok'); toast('Завершение отменено — продолжаем');
@@ -3189,6 +3257,186 @@ function backdateFinish(){
 function startBackdatedWorkout(iso){
   pendingBackdate = iso; closeSheet(); go('workout');
   toast(iso===todayISO() ? 'Отметь подходы и заверши тренировку' : 'Заполни веса → «Записать на прошедшую дату»');
+}
+
+/* ============ ВОССТАНОВЛЕНИЕ ДАННЫХ ============
+   Ищет всё, что осталось: резервную копию, старый ключ, «осиротевшие» куски в облаке,
+   копии на устройстве. Из обрывков вытаскивает целые записи тренировок и хвост данных. */
+const TOP_KEYS = ['style','mood','off','weights','history','workWeights','week','workout','benchRM','program','aWorkout','aWeights',
+  'exHist','rmHist','theme','session','cardio','cardioGoal','cardioGoalKm','savedAt'];
+
+/* конец JSON-объекта/массива, начинающегося в позиции p, или -1 */
+function jsonEnd(t, p){
+  let depth = 0, str = false, esc = false;
+  for (let i=p; i<t.length; i++){
+    const c = t[i];
+    if (str){ if (esc) esc=false; else if (c==='\\') esc=true; else if (c==='"') str=false; continue; }
+    if (c==='"') str = true;
+    else if (c==='{' || c==='[') depth++;
+    else if (c==='}' || c===']'){ depth--; if (depth===0) return i; }
+  }
+  return -1;
+}
+/* из обрывка JSON достаём всё, что можно */
+function salvage(t){
+  if (!t) return null;
+  const whole = safeParse(t); if (whole && Array.isArray(whole.history)) return withRebuilt(whole);
+  const out = {history:[], weights:[], cardio:[]};
+  /* 1) хвост: с самого раннего ключа верхнего уровня, с которого остаток — валидный JSON */
+  let tailFrom = t.length;
+  for (const k of TOP_KEYS){
+    const re = new RegExp('[,{]"'+k+'":', 'g'); let m;
+    while ((m = re.exec(t))){
+      const pos = m.index + 1;
+      if (pos >= tailFrom) break;
+      const obj = safeParse('{' + t.slice(pos));
+      if (obj){ Object.assign(out, obj); tailFrom = pos; break; }
+    }
+  }
+  /* 2) отдельные записи {"date":...} до хвоста */
+  const head = t.slice(0, tailFrom);
+  let i = 0;
+  while ((i = head.indexOf('{"date":"', i)) !== -1){
+    const e = jsonEnd(head, i);
+    if (e < 0) break;
+    const o = safeParse(head.slice(i, e+1));
+    if (o){
+      if ('tonnage' in o) out.history.push(o);
+      else if ('dist' in o) out.cardio.push(o);
+      else if ('kg' in o && Object.keys(o).length<=3) out.weights.push(o);
+      i = e+1;
+    } else i += 9;
+  }
+  if (Array.isArray(out.history) && out.history.length){
+    const tailHist = (whole && whole.history) || [];
+    out.history = unionBy(out.history, tailHist, hKey);
+  }
+  return (histLen(out) || Object.keys(out.exHist||{}).length) ? withRebuilt(out) : null;
+}
+function withRebuilt(d){
+  try{ const r = rebuildHistory(d); if (r.length){ d.history = unionBy(r, d.history, hKey); d.__rebuilt = r.length; } }catch(e){}
+  return d;
+}
+/* история упражнений (exHist) хранит дату, вес и цикл каждой тренировки —
+   по ней восстанавливаем потерянные записи журнала (тоннаж — по программе) */
+function rebuildHistory(d){
+  const ex = d.exHist || {}, have = new Set((d.history||[]).map(h=>h.date+'|'+((h.prog||'tengo')==='aomame'?'a':'t')));
+  const byDate = {};
+  for (const name in ex) (ex[name]||[]).forEach(x=>{ if (!x || !x.d) return;
+    const a = name.startsWith('a:'), k = x.d+'|'+(a?'a':'t');
+    (byDate[k] = byDate[k] || {date:x.d, a, c:x.c, w:{}}).w[a?name.slice(2):name] = x.kg; if (x.c) byDate[k].c = x.c; });
+  const rmAt = date => { const r = (d.rmHist||[]).filter(x=>x.d<=date).pop(); return r ? r.kg : (d.benchRM||100); };
+  const out = [];
+  /* Tengo: идём назад от текущей позиции в цикле */
+  const tDates = Object.values(byDate).filter(x=>!x.a).map(x=>x.date)
+    .concat((d.history||[]).filter(h=>(h.prog||'tengo')==='tengo').map(h=>h.date));
+  const uniq = [...new Set(tDates)].sort().reverse();
+  let idx = tengoIdx(d.week||1, d.workout||1) - 1;
+  uniq.forEach(date=>{
+    const real = (d.history||[]).find(h=>h.date===date && (h.prog||'tengo')==='tengo');
+    if (real){ if (real.week && real.week<10) idx = tengoIdx(real.week, real.workout) - 1; else idx = 26; return; }
+    const g = byDate[date+'|t']; if (!g) return;
+    if (idx < 0) idx += 27;
+    let pos = tengoFromIdx(idx), tries = 0;
+    while (g.c && cycleForWeek(pos.week)!==g.c && tries<27){ idx = (idx-1+27)%27; pos = tengoFromIdx(idx); tries++; }
+    /* номер тренировки — по совпадению упражнений */
+    if (g.c && CYCLES[g.c]){
+      const sc = CYCLES[g.c].workouts.map(list=>list.filter(e=>e.n in g.w).length);
+      const mx = Math.max(...sc), best = sc.indexOf(mx)+1, unique = sc.filter(x=>x===mx).length===1;
+      if (unique && mx>0 && best!==pos.workout){ pos = {week:pos.week, workout:best}; idx = tengoIdx(pos.week, best); }
+    }
+    if (pos.week>=10) return;
+    let ton = 0; try{ ton = tengoTonnage(pos.week, pos.workout, g.w, null, rmAt(date)); }catch(e){}
+    out.push({date, week:pos.week, workout:pos.workout, tonnage:ton, rm:rmAt(date), rebuilt:true});
+    idx -= 1;
+  });
+  /* Aomame: номер тренировки записан прямо в цикле упражнения (w1..w3) */
+  Object.values(byDate).filter(x=>x.a && !have.has(x.date+'|a')).forEach(g=>{
+    const n = +(String(g.c||'').replace('w','')) || 1; let ton = 0;
+    try{ ton = aomameTonnage(n, g.w); }catch(e){}
+    out.push({date:g.date, prog:'aomame', workout:n, tonnage:ton, rebuilt:true});
+  });
+  return out;
+}
+function describeFound(d){
+  const H = d.history||[], last = H.length ? H.map(h=>h.date).sort().pop() : null;
+  const ex = Object.keys(d.exHist||{}).length;
+  return `${H.length} ${plural(H.length,'тренировка','тренировки','тренировок')}${last?' · последняя '+fmtDateRu(last):''}${(d.weights||[]).length?' · '+d.weights.length+' взвеш.':''}${ex?' · '+ex+' упр. с историей':''}${d.__rebuilt?' · из них '+d.__rebuilt+' восстановлено по весам':''}`;
+}
+
+let rescueFound = [];
+async function rescueScan(){
+  const found = [];
+  const add = (label, d) => { if (d && (histLen(d) || Object.keys(d.exHist||{}).length)) found.push({label, d}); };
+  /* устройство */
+  try{
+    for (let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if (/^tp1703(_|$)/.test(k) && k!=='tp1703_introN') add('на этом устройстве · '+k, salvage(localStorage.getItem(k)));
+    }
+  }catch(e){}
+  let info = '';
+  if (CLOUD){
+    const keys = await cloudKeys();
+    if (!keys){ info = 'облако Telegram не ответило — проверь интернет и попробуй ещё раз'; }
+    else {
+      info = `ключей в облаке: ${keys.length}`;
+      const all = await cloudGetMany(keys) || {};
+      /* основная копия */
+      const meta = safeParse(all[CK_META]||'') || {n:0};
+      let main = ''; for (let i=0;i<meta.n;i++) main += all[CK_PART+i]||'';
+      add('облако · основная копия', salvage(main));
+      /* резервная копия */
+      const bm = safeParse(all[CK_BK]||'');
+      if (bm && bm.n){ let b=''; for (let i=0;i<bm.n;i++) b += all[CK_BK+'_'+i]||''; add('облако · резервная копия от '+fmtDateRu(bm.day), salvage(b)); }
+      /* старый одиночный ключ */
+      if (all[CK_LEGACY]) add('облако · старая версия приложения', salvage(all[CK_LEGACY]));
+      /* куски старой большой копии, оставшиеся за пределами текущей */
+      const idx = keys.map(k=>k.startsWith(CK_PART) ? +k.slice(CK_PART.length) : -1).filter(n=>n>=meta.n).sort((a,b)=>a-b);
+      if (idx.length){ let o=''; for (let n=idx[0]; all[CK_PART+n]!=null; n++) o += all[CK_PART+n];
+        add(`облако · уцелевшие куски (${idx.length})`, salvage(o)); }
+      /* полный «склей всё по порядку» — на случай, если оглавление испорчено */
+      let seq = ''; for (let n=0; all[CK_PART+n]!=null; n++) seq += all[CK_PART+n];
+      if (seq !== main) add('облако · все куски подряд', salvage(seq));
+    }
+  } else info = 'облако Telegram недоступно (приложение открыто не в Telegram)';
+  found.sort((a,b)=>histLen(b.d)-histLen(a.d));
+  return {found, info};
+}
+async function openRescue(auto){
+  if (!auto) openSheet(`<h3>Поиск данных</h3><div class="sub">ищу в облаке Telegram и на устройстве…</div>`);
+  const {found, info} = await rescueScan();
+  const cur = histLen(store.data);
+  rescueFound = found;
+  const better = found.filter(f=>histLen(f.d) > cur || (!cur && Object.keys(f.d.exHist||{}).length));
+  if (auto && !better.length) return;
+  const list = found.length ? found.map((f,i)=>`<div class="li"><div><div class="t1">${esc(f.label)}</div><div class="t2">${describeFound(f.d)}</div></div>
+      <button class="mini-btn" onclick="rescueApply(${i},this)">Вернуть</button></div>`).join('')
+    : `<div class="hint">ничего не нашлось. Если у тебя есть текст бэкапа — вставь его через «Восстановить».</div>`;
+  openSheet(`<h3>${better.length ? 'Нашёл твои данные' : 'Что есть в облаке'}</h3>
+    <div class="sub">сейчас в приложении: ${describeFound(store.data)}<br>${esc(info)}</div>
+    <div style="margin-top:12px">${list}</div>
+    <div class="hint" style="margin-top:10px">«Вернуть» объединяет найденное с текущими данными — ничего из текущего не удаляется.</div>
+    <div class="btns"><button class="btn soft" onclick="rescueCopy()">Скопировать найденное</button><button class="btn ghost" onclick="closeSheet()">Закрыть</button></div>`);
+}
+let rescueArm = -1, rescueArmT = 0;
+function rescueApply(i, btn){
+  const f = rescueFound[i]; if (!f) return;
+  if (rescueArm!==i || Date.now()-rescueArmT>4000){ rescueArm=i; rescueArmT=Date.now(); btn.textContent='Точно?'; haptic('warn'); return; }
+  const cur = JSON.parse(JSON.stringify(store.data));
+  const found = Object.assign({}, f.d); delete found.__rebuilt;
+  /* позиция в цикле и настройки — из найденного, если сейчас приложение «с нуля» */
+  const merged = histLen(cur) <= 1 ? mergeData(cur, Object.assign({}, cur, found, {savedAt:Date.now()})) : mergeData(found, cur);
+  store.apply(merged);
+  store.cloudOk = true; store.save(); store.flushCloud();
+  closeSheet(); haptic('ok'); toast('Данные возвращены · '+describeFound(store.data));
+  applyTheme(store.data.theme||'light'); go('home',{silent:true});
+}
+function rescueCopy(){
+  const best = rescueFound[0]; if (!best){ toast('Нечего копировать'); return; }
+  const json = JSON.stringify(best.d);
+  const ok = ()=>{ toast('Скопировано — сохрани в «Избранном»'); haptic('ok'); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(json).then(ok, ()=>toast('Не удалось скопировать')); else toast('Не удалось скопировать');
 }
 
 /* ============ ПРОГРАММА ============ */
@@ -3496,7 +3744,8 @@ function journalCard(){
 function dataCard(){
   return `<div class="card"><div class="label">Данные</div>
     <div class="hint" style="margin:-2px 0 4px">всё хранится в твоём аккаунте Telegram и на устройстве · обновление приложения их не трогает</div>
-    <div class="btns" style="grid-template-columns:1fr 1fr"><button class="btn soft" onclick="exportData()">Скопировать бэкап</button><button class="btn ghost" onclick="openImport()">Восстановить</button></div></div>`;
+    <div class="btns" style="grid-template-columns:1fr 1fr"><button class="btn soft" onclick="exportData()">Скопировать бэкап</button><button class="btn ghost" onclick="openImport()">Восстановить</button></div>
+    <div class="btns"><button class="btn ghost" onclick="openRescue(false)">Найти потерянные данные</button></div></div>`;
 }
 function openDay(iso){
   const list = store.data.history.map((h,i)=>({h,i})).filter(x=>x.h.date===iso);
@@ -3648,7 +3897,7 @@ function saveHistoryEdit(i){
 }
 function deleteHistory(i){
   if (Date.now()-histDelArm > 4000){ histDelArm = Date.now(); const b=$('#eh-del'); if (b) b.textContent='Точно удалить? Нажми ещё раз'; haptic('warn'); return; }
-  store.data.history.splice(i,1); afterHistoryChange(); closeSheet(); haptic('ok'); toast('Запись удалена');
+  store.allowShrink = true; store.data.history.splice(i,1); afterHistoryChange(); closeSheet(); haptic('ok'); toast('Запись удалена');
 }
 
 function setMoodHist(date, v){ setMood(date, v); const m=$('#hist-mood'); if (m) m.innerHTML = moodRow(date,'setMoodHist'); }
@@ -3672,7 +3921,7 @@ function doImport(){
   const d = safeParse($('#imp-txt').value.trim());
   if (!d || !Array.isArray(d.history) || !Array.isArray(d.weights)){ toast('Это не похоже на бэкап 1703'); haptic('warn'); return; }
   if (Date.now()-impArm > 4000){ impArm = Date.now(); $('#imp-btn').textContent = `Заменить данные? ${d.history.length} трен., ${d.weights.length} взвеш.`; haptic('warn'); return; }
-  store.apply(d); store.save(); store.flushCloud(); closeSheet(); haptic('ok'); toast('Данные восстановлены'); applyTheme(store.data.theme||'light'); go('home',{silent:true});
+  store.apply(d); store.allowShrink = true; store.cloudOk = store.cloudOk || !CLOUD; store.save(); store.flushCloud(); closeSheet(); haptic('ok'); toast('Данные восстановлены'); applyTheme(store.data.theme||'light'); go('home',{silent:true});
 }
 
 /* ============ СТАРТ ============ */
@@ -3699,6 +3948,7 @@ async function boot(){
   const t0 = Date.now();
   await store.load(()=>{ if (appStarted){ applyTheme(store.data.theme||'light'); rerenderActive(); toast('Данные синхронизированы из облака'); } });
   applyTheme(store.data.theme||'light');
+  if (CLOUD && !store.cloudOk && !local) setTimeout(()=>toast('Облако Telegram не ответило — данные в нём не тронуты. Перезапусти приложение'), 2500);
   autoFinishCheck();
   introText(); ringTo(85);
   const wait = Math.max(0, (REDUCED?0:2600) - (Date.now()-t0));
@@ -3711,6 +3961,7 @@ function enterApp(){
   intro.classList.add('go'); haptic('med');
   applyTheme(store.data.theme||'light');
   setTimeout(()=>{ intro.classList.add('out'); go('home', {first:true, silent:true}); showAutoNote(); }, REDUCED ? 0 : 420);
+  setTimeout(()=>{ if (histLen(store.data) < 3) openRescue(true).catch(()=>{}); }, 1600);
   setTimeout(()=>{ intro.style.display='none'; Intro.stop(); }, REDUCED ? 50 : 1100);
 }
 boot();
